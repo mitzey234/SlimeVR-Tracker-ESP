@@ -93,6 +93,9 @@ void Configuration::setup() {
 	} else {
 		m_Logger.info("No configuration file found, creating new one");
 		m_Config.version = CURRENT_CONFIGURATION_VERSION;
+		m_Config.espnowConfigured = false;
+		memset(m_Config.espnowGatewayAddress, 0, 6);
+		memset(m_Config.espnowSecurityCode, 0, 8);
 		save();
 	}
 
@@ -173,6 +176,38 @@ void Configuration::reset() {
 }
 
 int32_t Configuration::getVersion() const { return m_Config.version; }
+
+const uint8_t* Configuration::getESPNowGatewayAddress() const {
+	if (!m_Config.espnowConfigured) {
+		return nullptr;
+	}
+	return m_Config.espnowGatewayAddress;
+}
+
+const uint8_t* Configuration::getESPNowSecurityCode() const {
+	if (!m_Config.espnowConfigured) {
+		return nullptr;
+	}
+	return m_Config.espnowSecurityCode;
+}
+
+void Configuration::setESPNowGateway(const uint8_t* address, const uint8_t* securityCode) {
+	if (address != nullptr && securityCode != nullptr) {
+		memcpy(m_Config.espnowGatewayAddress, address, 6);
+		memcpy(m_Config.espnowSecurityCode, securityCode, 8);
+		m_Config.espnowConfigured = true;
+		save();
+		m_Logger.info("ESP-NOW gateway configuration saved");
+	}
+}
+
+void Configuration::clearESPNowGateway() {
+	m_Config.espnowConfigured = false;
+	memset(m_Config.espnowGatewayAddress, 0, 6);
+	memset(m_Config.espnowSecurityCode, 0, 8);
+	save();
+	m_Logger.info("ESP-NOW gateway configuration cleared");
+}
 
 size_t Configuration::getSensorCount() const { return m_Sensors.size(); }
 

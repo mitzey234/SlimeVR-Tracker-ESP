@@ -381,7 +381,7 @@
 				},
 				"LED": {
 					"LED_PIN": "10",
-					"LED_INVERTED": false
+					"LED_INVERTED": true
 				}
 			},
 			"flashingRules": {

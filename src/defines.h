@@ -27,10 +27,10 @@
 
 // Set parameters of IMU and board used
 #ifndef IMU
-#define IMU IMU_AUTO
+#define IMU IMU_ICM45686
 #endif
 #ifndef SECOND_IMU
-#define SECOND_IMU IMU_AUTO
+#define SECOND_IMU IMU_ICM45686
 #endif
 #ifndef BOARD
 #define BOARD BOARD_SLIMEVR_V1_2

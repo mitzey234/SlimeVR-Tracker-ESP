@@ -26,9 +26,14 @@
 
 #include "batterymonitor.h"
 #include "configuration/Configuration.h"
+#if USE_ESPNOW
+#include "network/connection_espnow.h"
+#else
 #include "network/connection.h"
+#endif
 #include "network/manager.h"
 #include "network/wifihandler.h"
+#include "network/espnowhandler.h"
 #include "network/wifiprovisioning.h"
 #include "sensors/SensorManager.h"
 #include "status/LEDManager.h"
@@ -40,7 +45,12 @@ extern SlimeVR::Status::StatusManager statusManager;
 extern SlimeVR::Configuration::Configuration configuration;
 extern SlimeVR::Sensors::SensorManager sensorManager;
 extern SlimeVR::Network::Manager networkManager;
+#if USE_ESPNOW
+extern SlimeVR::Network::ConnectionESPNOW networkConnection;
+#else
 extern SlimeVR::Network::Connection networkConnection;
+#endif
 extern BatteryMonitor battery;
 extern SlimeVR::WiFiNetwork wifiNetwork;
+extern SlimeVR::ESPNow& espNow;
 extern SlimeVR::WifiProvisioning wifiProvisioning;

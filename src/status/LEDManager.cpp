@@ -75,35 +75,14 @@ void LEDManager::update() {
 	unsigned int length = 0;
 	unsigned int count = 0;
 
-	if (statusManager.hasStatus(Status::LOW_BATTERY)) {
-		count = LOW_BATTERY_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = LOW_BATTERY_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = LOW_BATTERY_INTERVAL;
-				break;
-		}
-	} else if (statusManager.hasStatus(Status::IMU_ERROR)) {
-		count = IMU_ERROR_COUNT;
-		switch (m_CurrentStage) {
-			case ON:
-			case OFF:
-				length = IMU_ERROR_LENGTH;
-				break;
-			case GAP:
-				length = DEFAULT_GAP;
-				break;
-			case INTERVAL:
-				length = IMU_ERROR_INTERVAL;
-				break;
-		}
-	} else if (statusManager.hasStatus(Status::WIFI_CONNECTING)) {
+	// Serial.print("LED Statuses: " + String(statusManager.hasStatus(Status::WIFI_CONNECTING)) + ", " +
+	// 	String(statusManager.hasStatus(Status::SERVER_CONNECTING)) + ", " +
+	// 	String(statusManager.hasStatus(Status::PAIRING_MODE)) + ", " +
+	// 	String(statusManager.hasStatus(Status::LOW_BATTERY)) + ", " +
+	// 	String(statusManager.hasStatus(Status::IMU_ERROR)) + "\n"
+	// );
+
+	if (statusManager.hasStatus(Status::WIFI_CONNECTING)) {
 		count = WIFI_CONNECTING_COUNT;
 		switch (m_CurrentStage) {
 			case ON:
@@ -111,7 +90,7 @@ void LEDManager::update() {
 				length = WIFI_CONNECTING_LENGTH;
 				break;
 			case GAP:
-				length = DEFAULT_GAP;
+				length = WIFI_CONNECTING_GAP;
 				break;
 			case INTERVAL:
 				length = WIFI_CONNECTING_INTERVAL;
@@ -129,6 +108,48 @@ void LEDManager::update() {
 				break;
 			case INTERVAL:
 				length = SERVER_CONNECTING_INTERVAL;
+				break;
+		}
+	} else if (statusManager.hasStatus(Status::PAIRING_MODE)) {
+		count = PAIRING_MODE_COUNT;
+		switch (m_CurrentStage) {
+			case ON:
+			case OFF:
+				length = PAIRING_MODE_LENGTH;
+				break;
+			case GAP:
+				length = PAIRING_MODE_GAP;
+				break;
+			case INTERVAL:
+				length = PAIRING_MODE_INTERVAL;
+				break;
+		}
+	} else if (statusManager.hasStatus(Status::IMU_ERROR)) {
+		count = IMU_ERROR_COUNT;
+		switch (m_CurrentStage) {
+			case ON:
+			case OFF:
+				length = IMU_ERROR_LENGTH;
+				break;
+			case GAP:
+				length = DEFAULT_GAP;
+				break;
+			case INTERVAL:
+				length = IMU_ERROR_INTERVAL;
+				break;
+		}
+	} else if (statusManager.hasStatus(Status::LOW_BATTERY)) {
+		count = LOW_BATTERY_COUNT;
+		switch (m_CurrentStage) {
+			case ON:
+			case OFF:
+				length = LOW_BATTERY_LENGTH;
+				break;
+			case GAP:
+				length = DEFAULT_GAP;
+				break;
+			case INTERVAL:
+				length = LOW_BATTERY_INTERVAL;
 				break;
 		}
 	} else {

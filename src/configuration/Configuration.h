@@ -59,6 +59,12 @@ public:
 		const GyroTemperatureCalibrationConfig& config
 	);
 
+	// ESP-NOW gateway configuration
+	const uint8_t* getESPNowGatewayAddress() const;
+	const uint8_t* getESPNowSecurityCode() const;
+	void setESPNowGateway(const uint8_t* address, const uint8_t* securityCode);
+	void clearESPNowGateway();
+
 private:
 	void loadSensors();
 	bool runMigrations(int32_t version);

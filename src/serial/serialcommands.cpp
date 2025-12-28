@@ -36,12 +36,12 @@
 #endif
 
 #ifdef EXT_SERIAL_COMMANDS
-#define CALLBACK_SIZE 7  // Increase callback size to allow for debug commands
+#define CALLBACK_SIZE 8  // Increase callback size to allow for debug commands
 #include "i2cscan.h"
 #endif
 
 #ifndef CALLBACK_SIZE
-#define CALLBACK_SIZE 6  // Default callback size
+#define CALLBACK_SIZE 7  // Default callback size
 #endif
 
 #if defined(VENDOR_URL) && defined(VENDOR_NAME) && defined(PRODUCT_NAME) \
@@ -451,6 +451,37 @@ void cmdDeleteCalibration(CmdParser* parser) {
 	configuration.eraseSensors();
 }
 
+void cmdPair(CmdParser* parser) {
+	logger.info("PAIR: Entering ESP-NOW pairing mode");
+#if USE_ESPNOW
+	espNow.Pairing();
+	logger.info("PAIR: Tracker is now in pairing mode, waiting for gateway");
+#else
+	logger.error("PAIR: ESP-NOW is not enabled on this device");
+#endif
+}
+
+void cmdUnpair(CmdParser* parser) {
+	logger.info("UNPAIR: Clearing ESP-NOW pairing");
+#if USE_ESPNOW
+	// Clear gateway address and security code from memory
+	if (espNow.hasGatewayAddress) {
+		esp_now_del_peer(espNow.gatewayAddress);
+	}
+	memset(espNow.gatewayAddress, 0, 6);
+	memset(espNow.securityCode, 0, 8);
+	espNow.hasGatewayAddress = false;
+
+	// Clear from persistent storage
+	configuration.clearESPNowGateway();
+
+	logger.info("UNPAIR: Gateway pairing cleared, entering pairing mode");
+	espNow.Pairing();
+#else
+	logger.error("UNPAIR: ESP-NOW is not enabled on this device");
+#endif
+}
+
 #if EXT_SERIAL_COMMANDS
 void cmdScanI2C(CmdParser* parser) {
 	logger.info("Forcing I2C scan...");
@@ -465,6 +496,8 @@ void setUp() {
 	cmdCallbacks.addCmd("REBOOT", &cmdReboot);
 	cmdCallbacks.addCmd("DELCAL", &cmdDeleteCalibration);
 	cmdCallbacks.addCmd("TCAL", &cmdTemperatureCalibration);
+	cmdCallbacks.addCmd("PAIR", &cmdPair);
+	cmdCallbacks.addCmd("UNPAIR", &cmdUnpair);
 #if EXT_SERIAL_COMMANDS
 	cmdCallbacks.addCmd("SCANI2C", &cmdScanI2C);
 #endif

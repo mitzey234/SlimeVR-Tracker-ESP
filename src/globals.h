@@ -54,7 +54,7 @@
 #endif
 
 #ifndef IMU_USE_EXTERNAL_CLOCK
-#define IMU_USE_EXTERNAL_CLOCK true  // Use external clock for IMU (ICM-45686 only)
+#define IMU_USE_EXTERNAL_CLOCK false  // Use external clock for IMU (ICM-45686 only)
 #endif
 
 #ifndef VENDOR_NAME

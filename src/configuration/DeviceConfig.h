@@ -27,6 +27,11 @@
 namespace SlimeVR::Configuration {
 struct DeviceConfig {
 	int32_t version;
+
+	// ESP-NOW gateway configuration
+	uint8_t espnowGatewayAddress[6];
+	uint8_t espnowSecurityCode[8];
+	bool espnowConfigured;
 };
 }  // namespace SlimeVR::Configuration
 

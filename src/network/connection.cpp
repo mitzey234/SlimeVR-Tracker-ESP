@@ -365,7 +365,8 @@ void Connection::sendTrackerDiscovery() {
 			// This is kept for backwards compatibility,
 			// but the latest SlimeVR server will not initialize trackers
 			// with firmware build > 8 until it recieves a sensor info packet
-			MUST_TRANSFER_BOOL(sendInt(static_cast<int>(sensorManager.getSensorType(0)))
+			MUST_TRANSFER_BOOL(
+				sendInt(static_cast<int>(sensorManager.getSensorType(0)))
 			);
 			MUST_TRANSFER_BOOL(sendInt(HARDWARE_MCU));
 			// Backwards compatibility, unused IMU data
@@ -773,7 +774,8 @@ void Connection::update() {
 				auto& sensors = sensorManager.getSensors();
 
 				if (sensorId >= sensors.size()) {
-					m_Logger.warn("Invalid sensor config flag packet: invalid sensor id"
+					m_Logger.warn(
+						"Invalid sensor config flag packet: invalid sensor id"
 					);
 					break;
 				}

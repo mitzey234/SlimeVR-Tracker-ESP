@@ -23,17 +23,34 @@
 #include "manager.h"
 
 #include "GlobalVars.h"
+#if ESP8266
+#include <espnow.h>
+#else
+#include <esp_now.h>
+#endif
 
 namespace SlimeVR::Network {
 
-void Manager::setup() { wifiNetwork.setUp(); }
+void Manager::setup() {
+#if USE_ESPNOW
+	espNow.setUp();
+#else
+	:WiFiNetwork::setUp();
+#endif
+}
 
 void Manager::update() {
-	wifiNetwork.upkeep();
-
 	auto wasConnected = m_IsConnected;
 
+#if USE_ESPNOW
+	espNow.upkeep();
+#if !SENDTESTINGFRAMES
+	m_IsConnected = espNow.isConnected();
+#endif
+#else
+	wifiNetwork.upkeep();
 	m_IsConnected = wifiNetwork.isConnected();
+#endif
 
 	if (!m_IsConnected) {
 		return;
