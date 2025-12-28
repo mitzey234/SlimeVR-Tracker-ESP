@@ -1,11 +1,11 @@
 # What is this fork?
-This is a fork of the original SlimeVR Tracker firmware for ESP, with added support for ESP-NOW networking. This allows multiple trackers to communicate directly with the slimevr host without the need for a central Wi-Fi access point, hopefully reducing latency and improving reliability in certain scenarios.
+This is a fork of the original SlimeVR Tracker firmware for ESPs, with added support for ESP-NOW networking. This allows multiple trackers to communicate directly with the SlimeVR host without the need for a central Wi-Fi access point, hopefully reducing latency and improving reliability in certain scenarios.
 
 This firmware should be paired with a ESP32-S3 controller running [this firmware](https://github.com/mitzey234/SlimeVR-Receiver-ESP-Now).
 
 This firmware doesn't support a pairing button so in order to enter pairing mode a command has been added into the serial console. Connect the ESP32-S3 to your computer, open a serial terminal (e.g. PuTTY) at 115200 baud rate and type `pair` followed by Enter. The receiver will then enter pairing mode for 60 seconds, during which you will need to have the other controller with the reciever firmware powered on and in pairing mode.
 
-By default the fireware will boot in pairing mode if no paired receiver is configured (factory reset).
+By default the firmware will boot in pairing mode if no paired receiver is configured (factory reset).
 
 Current recommendations are to only pair 5-6 trackers to a single receiver to avoid a poor experience, but this may vary depending on your environment and other factors.
 
