@@ -1,3 +1,14 @@
+# What is this fork?
+This is a fork of the original SlimeVR Tracker firmware for ESP, with added support for ESP-NOW networking. This allows multiple trackers to communicate directly with the slimevr host without the need for a central Wi-Fi access point, hopefully reducing latency and improving reliability in certain scenarios.
+
+This firmware should be paired with a ESP32-S3 controller running [this firmware](https://github.com/mitzey234/SlimeVR-Receiver-ESP-Now).
+
+This firmware doesn't support a pairing button so in order to enter pairing mode a command has been added into the serial console. Connect the ESP32-S3 to your computer, open a serial terminal (e.g. PuTTY) at 115200 baud rate and type `pair` followed by Enter. The receiver will then enter pairing mode for 60 seconds, during which you will need to have the other controller with the reciever firmware powered on and in pairing mode.
+
+By default the fireware will boot in pairing mode if no paired receiver is configured (factory reset).
+
+Current recommendations are to only pair 5-6 trackers to a single receiver to avoid a poor experience, but this may vary depending on your environment and other factors.
+
 # SlimeVR Tracker firmware for ESP
 
 Firmware for ESP8266 / ESP32 microcontrollers and different IMU sensors to use them as a vive-like trackers in VR.
@@ -65,7 +76,7 @@ Firmware can work with both ESP8266 and ESP32. Please edit `defines.h` and set y
     > The LED will be lit continuously. If you have the tracker connected via USB and open the serial console, you will see text prompts in addition to the LEDs. You can only calibrate 1 IMU at a time.
 
     Flip it back up while the LED is still solid. Wait a few seconds, do not touch the device.
-    
+
   - **Step 1: It will flash 3 times when gyroscope calibration begins.**
 
     > If done incorrectly, this step is the most likely source of constant drift.
@@ -80,9 +91,9 @@ Firmware can work with both ESP8266 and ESP32. Please edit `defines.h` and set y
     > If you are unable to keep it on a flat surface without touching, press the device against a wall, it does not have to be absolutely perfect.
 
     **There will be two very short blinks when each position is recorded.**
-    
+
     Rotate the device 90 or 180 degrees in any direction. It should be on a different side each time. Continue to rotate until all 6 sides have been recorded.
-    
+
     The last position has a long flash when recorded, indicating exit from calibration mode.
 
   #### Additional info for BMI160
