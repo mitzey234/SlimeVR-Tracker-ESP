@@ -28,18 +28,23 @@ void ESPNow::setUp() {
 		return;
 	}
 
-		channel = 0;
+	channel = 0;
 
-		WiFi.mode(WIFI_STA);
+	WiFi.mode(WIFI_STA);
 #if !ESP8266
-		esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
-		esp_wifi_set_max_tx_power(WIFI_POWER_13dBm);
-		WiFi.setChannel(channel);
+	esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
+	//esp_wifi_set_max_tx_power(WIFI_POWER_19_5dBm);
+	WiFi.setChannel(channel);
+
+	rate_config.phymode = WIFI_PHY_MODE_HT20;
+    rate_config.rate = WIFI_PHY_RATE_MCS7_SGI;
+    rate_config.ersu = false;
 #else
-		WiFi.setPhyMode(WIFI_PHY_MODE_11G | WIFI_PHY_MODE_11N);
-		WiFi.setOutputPower(13.0); // Max power for ESP8266 is 20 dBm
-		wifi_set_channel(getChannel());
+	WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+	//WiFi.setOutputPower(19.5);
+	wifi_set_channel(getChannel());
 #endif
+
 	auto startState = esp_now_init();
 #if ESP8266
 	if (startState == ERR_OK) {
@@ -106,7 +111,7 @@ void ESPNow::setUp() {
 		esp_wifi_set_config(WIFI_IF_STA, &conf);
 		WiFi.setSleep(WIFI_PS_MAX_MODEM);
 	} else {
-		wifiHandlerLogger.error("Unable to get WiFi config, power saving not enabled!");
+		espnowHandlerLogger.error("Unable to get WiFi config, power saving not enabled!");
 	}
 #endif
 #endif
@@ -271,6 +276,8 @@ void ESPNow::HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len
 	if (addResult != ESP_OK) {
 		Serial.printf("[ESPNOW] Failed to add peer: %d\n", addResult);
 		return;
+	} else {
+		esp_now_set_peer_rate_config(peerInfo.peer_addr, &rate_config);
 	}
 #endif
 
@@ -425,6 +432,9 @@ void ESPNow::HandleHeartbeatEcho(uint8_t * mac, uint8_t *data, uint8_t len) {
 		Serial.printf("[ESPNOW] Invalid heartbeat echo length: expected %d, got %d\n", sizeof(ESPNowHeartbeatEchoMessage), len);
 		return;
 	}
+
+	MissedHeartbeats = 0;
+
 	ESPNowHeartbeatResponseMessage heartbeatResponse;
 	ESPNowHeartbeatEchoMessage *echoMessage = reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
 	heartbeatResponse.sequenceNumber = echoMessage->sequenceNumber;
@@ -551,6 +561,7 @@ void ESPNow::setState (GatewayStatus newState) {
 				peerInfo.channel = 0;
 				peerInfo.encrypt = false;
 				esp_now_add_peer(&peerInfo);
+				esp_now_set_peer_rate_config(peerInfo.peer_addr, &rate_config);
 			}
 #endif
 			break;
@@ -655,8 +666,8 @@ void ESPNow::upkeep () {
 						MissedHeartbeats++;
 						//Serial.printf("[ESPNOW] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
 
-						if (MissedHeartbeats >= 3) {
-							Serial.println("[ESPNOW] Connection lost - 3 heartbeats missed");
+						if (MissedHeartbeats >= 5) {
+							Serial.println("[ESPNOW] Connection lost - 5 heartbeats missed");
 							if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
 							setState(GatewayStatus::Connecting);
 							break;
@@ -678,8 +689,8 @@ void ESPNow::upkeep () {
 			if (millis() - LastPacketSendTime >= 1000/200) {
 				LastPacketSendTime = millis();
 				ESPNowPacketMessage packet;
-				packet.len = 12;
-				memcpy(packet.data, "Hello World!", 12); //Example data
+				packet.len = 16;
+				memcpy(packet.data, "Hello World!1234", 16); //Example data
 
 				// Only send the actual used portion: header (1) + len (1) + actual data length
 				size_t actualSize = 2 + packet.len;

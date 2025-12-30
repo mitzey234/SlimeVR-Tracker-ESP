@@ -44,6 +44,7 @@ public:
 	static void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len);
 #else
 	static void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len);
+	esp_now_rate_config_t rate_config;
 #endif
 
 	void HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len);
@@ -109,5 +110,7 @@ public:
 	void Pairing();
 
 	void setState (GatewayStatus newState);
+
+	SlimeVR::Logging::Logger espnowHandlerLogger{"ESPNowHandler"};
 };
 }  // namespace SlimeVR
