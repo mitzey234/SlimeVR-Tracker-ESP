@@ -53,7 +53,7 @@ public:
 	void update();
 	void reset();
 	bool isConnected() const { return m_Connected; }
-	void setTrackerRate(uint32_t rateHz) { m_TrackerRateHz = rateHz; }
+	void setTrackerRate(uint32_t rateHz) { m_minIntervalUs = 1000000 / rateHz; }
 
 	// Bundle support disabled for ESP-NOW - not compatible with binary packet protocol
 	bool beginBundle() { return false; }
@@ -146,14 +146,12 @@ private:
 	Vector3 m_LastAccel[MAX_SENSORS_COUNT] = {Vector3(0, 0, 0)};
 	float m_LastTemperature[MAX_SENSORS_COUNT] = {0.0f};
 	uint8_t m_LastError[MAX_SENSORS_COUNT] = {0};
-	uint8_t m_LastAccuracy[MAX_SENSORS_COUNT] = {0};
 
 	bool m_HasQuatData[MAX_SENSORS_COUNT] = {false};
 	bool m_HasAccelData[MAX_SENSORS_COUNT] = {false};
 	bool m_HasTemperature[MAX_SENSORS_COUNT] = {false};
-	bool m_HasNewData[MAX_SENSORS_COUNT] = {false};
 
-	uint32_t m_TrackerRateHz = 100; // Default 100Hz polling rate
+	uint32_t m_minIntervalUs = 10000;
 };
 
 }  // namespace SlimeVR::Network

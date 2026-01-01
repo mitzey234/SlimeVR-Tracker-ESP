@@ -97,7 +97,7 @@ bool ConnectionESPNOW::endPacket() {
 	if (result != ESP_OK) {
 #endif
 		Serial.printf("[ESPNOW] Error sending packet: %d\n", result);
-		m_ErrorSendingWaitUntilTimestamp = millis() + 500; // Wait 500ms before next send attempt
+		m_ErrorSendingWaitUntilTimestamp = micros() + 500000; // Wait 500ms before next send attempt
 		return false;
 	}
 	m_BundlePacketPosition = 0;
@@ -115,10 +115,6 @@ void ConnectionESPNOW::sendRotationData(uint8_t sensorId, Quat* const quaternion
 		if (!m_HasQuatData[sensorId]) {
 			m_LastQuat[sensorId] = *quaternion;
 			m_HasQuatData[sensorId] = true;
-		}
-		if (!m_HasNewData[sensorId]) {
-			m_LastAccuracy[sensorId] = accuracyInfo;
-			m_HasNewData[sensorId] = true; // Sensor detected movement/change
 		}
 	}
 }
@@ -192,32 +188,30 @@ void ConnectionESPNOW::update() {
 		return;
 	}
 
-	// Packet 0: Device info every 500ms (500000us)
+	// Packet 0: Device info every 500ms
 	if (nowUs - lastPacket0Time >= 500000) {
 		sendPacket0_DeviceInfo();
 		lastPacket0Time = nowUs;
 	}
 
-	// Packet 3: Status updates every 1 second (1000000us)
+	// Packet 3: Status updates every 1 second
 	if (nowUs - lastPacket3Time >= 1000000) {
 		sendPacket3_Status();
 		lastPacket3Time = nowUs;
 	}
 
 	// Check if primary sensor has new data
-	if (m_HasNewData[primarySensorId] && m_HasQuatData[primarySensorId] && m_HasAccelData[primarySensorId]) {
+	if (m_HasQuatData[primarySensorId] && m_HasAccelData[primarySensorId]) {
 		// Packet 1: Full precision quat + accel (rate limited)
-		uint32_t minIntervalUs = 1000000 / m_TrackerRateHz;
-		// Convert m_ErrorSendingWaitUntilTimestamp (ms) to us for comparison
-		if (nowUs - lastPacket1Time >= minIntervalUs && nowUs >= m_ErrorSendingWaitUntilTimestamp * 1000UL) {
+		if (nowUs - lastPacket1Time >= m_minIntervalUs && m_ErrorSendingWaitUntilTimestamp <= nowUs) {
 			sendPacket1_QuatAccel(m_LastQuat[primarySensorId], m_LastAccel[primarySensorId]);
 			lastPacket1Time = nowUs;
-			m_HasNewData[primarySensorId] = false;
 			m_HasQuatData[primarySensorId] = false;
+			m_HasAccelData[primarySensorId] = false;
 		}
 	}
 
-	// Packet 4: Magnetometer data (if available, max ~200ms interval = 200000us)
+	// Packet 4: Magnetometer data (if available, max ~200ms interval)
 	if (sensors[primarySensorId]->getAttachedMagnetometer() != nullptr && (nowUs - lastPacket4Time >= 200000)) {
 		// For now, skip mag data as we need proper magnetometer access
 		// TODO: Add proper magnetometer data access
