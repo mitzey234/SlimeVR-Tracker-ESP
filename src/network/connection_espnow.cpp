@@ -104,8 +104,6 @@ bool ConnectionESPNOW::endPacket() {
 	return true;
 }
 
-size_t ConnectionESPNOW::write(uint8_t byte) { return write(&byte, 1); }
-
 int ConnectionESPNOW::getWriteError() {
 	return 0;
 }
@@ -114,17 +112,23 @@ int ConnectionESPNOW::getWriteError() {
 void ConnectionESPNOW::sendRotationData(uint8_t sensorId, Quat* const quaternion, uint8_t dataType, uint8_t accuracyInfo) {
 	// Store the latest rotation data - will be sent in next update cycle via Packet 1 or 2
 	if (quaternion) {
-		m_LastQuat[sensorId] = *quaternion;
-		m_HasQuatData[sensorId] = true;
-		m_LastAccuracy[sensorId] = accuracyInfo;
-		m_HasNewData[sensorId] = true; // Sensor detected movement/change
+		if (!m_HasQuatData[sensorId]) {
+			m_LastQuat[sensorId] = *quaternion;
+			m_HasQuatData[sensorId] = true;
+		}
+		if (!m_HasNewData[sensorId]) {
+			m_LastAccuracy[sensorId] = accuracyInfo;
+			m_HasNewData[sensorId] = true; // Sensor detected movement/change
+		}
 	}
 }
 
 void ConnectionESPNOW::sendSensorAcceleration(uint8_t sensorId, Vector3 vector) {
 	// Store the latest acceleration data
-	m_LastAccel[sensorId] = vector;
-	m_HasAccelData[sensorId] = true;
+	if (!m_HasAccelData[sensorId]) {
+		m_LastAccel[sensorId] = vector;
+		m_HasAccelData[sensorId] = true;
+	}
 }
 
 void ConnectionESPNOW::sendSensorError(uint8_t sensorId, uint8_t error) {
@@ -159,7 +163,6 @@ void ConnectionESPNOW::reset() {
 }
 
 void ConnectionESPNOW::update() {
-	auto nowMs = millis();
 	auto nowUs = micros();
 
 	// Static timing variables for packet scheduling
@@ -189,40 +192,42 @@ void ConnectionESPNOW::update() {
 		return;
 	}
 
-	// Packet 0: Device info every 250ms
-	if (nowMs - lastPacket0Time >= 250) {
+	// Packet 0: Device info every 500ms (500000us)
+	if (nowUs - lastPacket0Time >= 500000) {
 		sendPacket0_DeviceInfo();
-		lastPacket0Time = nowMs;
+		lastPacket0Time = nowUs;
 	}
 
-	// Packet 3: Status updates every 1 second
-	if (nowMs - lastPacket3Time >= 1000) {
+	// Packet 3: Status updates every 1 second (1000000us)
+	if (nowUs - lastPacket3Time >= 1000000) {
 		sendPacket3_Status();
-		lastPacket3Time = nowMs;
+		lastPacket3Time = nowUs;
 	}
 
 	// Check if primary sensor has new data
 	if (m_HasNewData[primarySensorId] && m_HasQuatData[primarySensorId] && m_HasAccelData[primarySensorId]) {
 		// Packet 1: Full precision quat + accel (rate limited)
 		uint32_t minIntervalUs = 1000000 / m_TrackerRateHz;
-		if (nowUs - lastPacket1Time >= minIntervalUs && m_ErrorSendingWaitUntilTimestamp <= nowMs) {
+		// Convert m_ErrorSendingWaitUntilTimestamp (ms) to us for comparison
+		if (nowUs - lastPacket1Time >= minIntervalUs && nowUs >= m_ErrorSendingWaitUntilTimestamp * 1000UL) {
 			sendPacket1_QuatAccel(m_LastQuat[primarySensorId], m_LastAccel[primarySensorId]);
 			lastPacket1Time = nowUs;
 			m_HasNewData[primarySensorId] = false;
+			m_HasQuatData[primarySensorId] = false;
 		}
 	}
 
-	// Packet 4: Magnetometer data (if available, max ~200ms interval)
-	if (sensors[primarySensorId]->getAttachedMagnetometer() != nullptr && (nowMs - lastPacket4Time >= 200)) {
+	// Packet 4: Magnetometer data (if available, max ~200ms interval = 200000us)
+	if (sensors[primarySensorId]->getAttachedMagnetometer() != nullptr && (nowUs - lastPacket4Time >= 200000)) {
 		// For now, skip mag data as we need proper magnetometer access
 		// TODO: Add proper magnetometer data access
 		// Vector3 mag = sensor->getMagnetometerData();
 		// sendPacket4_QuatMag(m_LastQuat[primarySensorId], mag);
-		lastPacket4Time = nowMs;
+		lastPacket4Time = nowUs;
 	}
 }
 
-// Packet 0: Device info (sent every 250ms)
+// Packet 0: Device info (sent every 500ms)
 void ConnectionESPNOW::sendPacket0_DeviceInfo() {
 	beginPacket();
 	m_Packet[0] = 0; // packet type

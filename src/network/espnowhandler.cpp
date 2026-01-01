@@ -33,7 +33,7 @@ void ESPNow::setUp() {
 	WiFi.mode(WIFI_STA);
 #if !ESP8266
 	esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
-	//esp_wifi_set_max_tx_power(WIFI_POWER_19_5dBm);
+	esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
 	WiFi.setChannel(channel);
 
 	rate_config.phymode = WIFI_PHY_MODE_HT20;
@@ -110,6 +110,7 @@ void ESPNow::setUp() {
 		conf.sta.listen_interval = 10;
 		esp_wifi_set_config(WIFI_IF_STA, &conf);
 		WiFi.setSleep(WIFI_PS_MAX_MODEM);
+		espnowHandlerLogger.info("Power saving enabled with listen interval %d", conf.sta.listen_interval);
 	} else {
 		espnowHandlerLogger.error("Unable to get WiFi config, power saving not enabled!");
 	}
@@ -227,24 +228,24 @@ void ESPNow::HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len
 		return;
 	}
 	Serial.println("[ESPNOW] Handling pairing announcement...");
-	ESPNowPairingAnnouncementMessage *message = reinterpret_cast<ESPNowPairingAnnouncementMessage*>(data);
+	auto& message = *reinterpret_cast<ESPNowPairingAnnouncementMessage*>(data);
 	Serial.printf(
 		"[ESPNOW] Security bytes: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-		message->securityBytes[0],
-		message->securityBytes[1],
-		message->securityBytes[2],
-		message->securityBytes[3],
-		message->securityBytes[4],
-		message->securityBytes[5],
-		message->securityBytes[6],
-		message->securityBytes[7]
+		message.securityBytes[0],
+		message.securityBytes[1],
+		message.securityBytes[2],
+		message.securityBytes[3],
+		message.securityBytes[4],
+		message.securityBytes[5],
+		message.securityBytes[6],
+		message.securityBytes[7]
 	);
 
 	//save security code
-	memcpy(securityCode, message->securityBytes, 8);
+	memcpy(securityCode, message.securityBytes, 8);
 	memcpy(gatewayAddress, mac, 6);
 
-	unsigned int announcedChannel = message->channel;
+	unsigned int announcedChannel = message.channel;
 	Serial.printf("[ESPNOW] Found gateway %02x:%02x:%02x:%02x:%02x:%02x on channel: %d\n",
 		gatewayAddress[0], gatewayAddress[1], gatewayAddress[2],
 		gatewayAddress[3], gatewayAddress[4], gatewayAddress[5],
@@ -327,6 +328,8 @@ void ESPNow::HandlePairingResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 
 	esp_now_del_peer(gatewayAddress);
 
+	channel--;
+
 	// For simplicity, assume pairing is always successful
 	setState(GatewayStatus::Connecting);
 }
@@ -354,18 +357,18 @@ void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) 
 	// Handle handshake response logic here
 	Serial.println("[ESPNOW] Handshake response received, connection established");
 
-	ESPNowConnectionAckMessage *ackMessage = reinterpret_cast<ESPNowConnectionAckMessage*>(data);
-	Serial.printf("[ESPNOW] Assigned channel: %d and tracker ID: %d\n", ackMessage->channel, ackMessage->trackerId);
+	auto& ackMessage = *reinterpret_cast<ESPNowConnectionAckMessage*>(data);
+	Serial.printf("[ESPNOW] Assigned channel: %d and tracker ID: %d\n", ackMessage.channel, ackMessage.trackerId);
 
 	// Store the assigned tracker ID
-	trackerId = ackMessage->trackerId;
+	trackerId = ackMessage.trackerId;
 
 	// Initialize heartbeat system
 	LastHeartbeatSendTime = 0;
 	WaitingForHeartbeatResponse = false;
 	MissedHeartbeats = 0;
 
-	channel = ackMessage->channel;
+	channel = ackMessage.channel;
 
 #if !ESP8266
 	WiFi.setChannel(channel);
@@ -412,8 +415,8 @@ void ESPNow::HandleHeartbeatResponse(uint8_t * mac, uint8_t *data, uint8_t len) 
 		return;
 	}
 
-	ESPNowHeartbeatResponseMessage *responseMessage = reinterpret_cast<ESPNowHeartbeatResponseMessage*>(data);
-	uint16_t receivedSeq = responseMessage->sequenceNumber;
+	auto& responseMessage = *reinterpret_cast<ESPNowHeartbeatResponseMessage*>(data);
+	uint16_t receivedSeq = responseMessage.sequenceNumber;
 
 	if (receivedSeq != HeartbeatSequenceNumber) {
 		//Serial.printf("[ESPNOW] Heartbeat sequence mismatch: expected %u, got %u\n", HeartbeatSequenceNumber, receivedSeq);
@@ -436,8 +439,8 @@ void ESPNow::HandleHeartbeatEcho(uint8_t * mac, uint8_t *data, uint8_t len) {
 	MissedHeartbeats = 0;
 
 	ESPNowHeartbeatResponseMessage heartbeatResponse;
-	ESPNowHeartbeatEchoMessage *echoMessage = reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
-	heartbeatResponse.sequenceNumber = echoMessage->sequenceNumber;
+	auto& echoMessage = *reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
+	heartbeatResponse.sequenceNumber = echoMessage.sequenceNumber;
 	auto result = esp_now_send(mac, reinterpret_cast<uint8_t*>(&heartbeatResponse), sizeof(ESPNowHeartbeatResponseMessage));
 #if ESP8266
 	if (result != ERR_OK) {
@@ -463,10 +466,10 @@ void ESPNow::HandleUnpair(uint8_t * mac, uint8_t *data, uint8_t len) {
 		return;
 	}
 
-	ESPNowUnpairMessage *message = reinterpret_cast<ESPNowUnpairMessage*>(data);
+	auto& message = *reinterpret_cast<ESPNowUnpairMessage*>(data);
 
 	// Verify security code matches
-	if (memcmp(message->securityBytes, securityCode, 8) != 0) {
+	if (memcmp(message.securityBytes, securityCode, 8) != 0) {
 		Serial.println("[ESPNOW] Unpair request with invalid security code, ignoring");
 		return;
 	}
@@ -506,12 +509,12 @@ void ESPNow::HandleTrackerRate(uint8_t * mac, uint8_t *data, uint8_t len) {
 		return;
 	}
 
-	ESPNowTrackerRateMessage *message = reinterpret_cast<ESPNowTrackerRateMessage*>(const_cast<uint8_t*>(data));
+	auto& message = *reinterpret_cast<ESPNowTrackerRateMessage*>(const_cast<uint8_t*>(data));
 
-	Serial.printf("[ESPNOW] Received tracker rate request: %u Hz\n", message->rateHz);
+	Serial.printf("[ESPNOW] Received tracker rate request: %u Hz\n", message.rateHz);
 
 	// Forward to network connection to update rate limiting
-	networkConnection.setTrackerRate(message->rateHz);
+	networkConnection.setTrackerRate(message.rateHz);
 }
 
 void ESPNow::Connect () {
@@ -569,8 +572,8 @@ void ESPNow::setState (GatewayStatus newState) {
 			if (!hasGatewayAddress) {
 				Serial.println("[ESPNow]: Starting Pairing mode");
 				esp_now_del_peer(gatewayAddress);
-				memcpy(gatewayAddress, "\x00\x00\x00\x00\x00\x00", 6); //Broadcast
-				memcpy(securityCode, "\x00\x00\x00\x00\x00\x00\x00\x00", 8); //Reset security code
+				std::fill_n(gatewayAddress, 6, 0);
+				std::fill_n(securityCode, 8, 0);
 				statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, false);
 				statusManager.setStatus(SlimeVR::Status::PAIRING_MODE, true);
 				PairingStartTime = millis();
@@ -588,6 +591,7 @@ void ESPNow::setState (GatewayStatus newState) {
 }
 
 void ESPNow::upkeep () {
+	auto now = millis();
 	switch (state) {
 		case GatewayStatus::NotSetup:
 			break;
@@ -597,8 +601,8 @@ void ESPNow::upkeep () {
 		case GatewayStatus::Connecting:
 			// Try to handshake with gateway
 			if (hasGatewayAddress) {
-				if (millis() - LastChannelSwitchTime >= 350) {
-					LastChannelSwitchTime = millis();
+				if (now - LastChannelSwitchTime >= 350) {
+					LastChannelSwitchTime = now;
 					if (channel == 0) {
 						channel = 1;
 					} else if (channel > 0 && channel < 11) {
@@ -613,11 +617,11 @@ void ESPNow::upkeep () {
 #endif
 					Serial.printf("[ESPNow]: Connect gateway via channel %d\n", channel);
 				}
-				if (millis() - LastHandshakeRequestTime < 500) {
+				if (now - LastHandshakeRequestTime < 500) {
 					//Don't spam requests
 					break;
 				}
-				LastHandshakeRequestTime = millis();
+				LastHandshakeRequestTime = now;
 				SendHandshakeRequest();
 			} else {
 				setState(GatewayStatus::SearchingForGateway);
@@ -625,8 +629,8 @@ void ESPNow::upkeep () {
 			break;
 		case GatewayStatus::Pairing:
 			// Try to pair with gateway
-			if (!hasGatewayAddress && (millis() - LastChannelSwitchTime) >= 350) {
-				LastChannelSwitchTime = millis();
+			if (!hasGatewayAddress && (now - LastChannelSwitchTime) >= 350) {
+				LastChannelSwitchTime = now;
 				if (channel == 0) {
 					channel = 1;
 				} else if (channel > 0 && channel < 11) {
@@ -642,32 +646,33 @@ void ESPNow::upkeep () {
 				Serial.printf("[ESPNow]: Scanning channel %d for gateway\n", channel);
 			}
 
-			if (millis() - PairingStartTime > 60000) {
+			if (now - PairingStartTime > 60000) {
 				Serial.println("[ESPNow]: Pairing timed out, restarting search for gateway");
 				if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
 				Connect();
 			} else if (hasGatewayAddress) {
-				if (millis() - LastPairingRequestTime < 500) {
+				if (now - LastPairingRequestTime < 500) {
 					//Don't spam requests
 					break;
 				}
-				LastPairingRequestTime = millis();
+				LastPairingRequestTime = now;
 				SendPairingRequest();
 			}
 			break;
 		case GatewayStatus::Connected:
 			// Maintain connection with heartbeat
 			// Only run heartbeat logic once per second
-			if (millis() - LastHeartbeatSendTime >= 1000) {
+			if (now - LastHeartbeatSendTime >= 1000) {
 				// Check if we're waiting for a response
 				if (WaitingForHeartbeatResponse) {
 					// Check if timeout exceeded (1000ms)
-					if (millis() - HeartbeatSentTimestamp >= 1000) {
+					if (now - HeartbeatSentTimestamp >= 1000) {
 						MissedHeartbeats++;
 						//Serial.printf("[ESPNOW] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
 
 						if (MissedHeartbeats >= 5) {
 							Serial.println("[ESPNOW] Connection lost - 5 heartbeats missed");
+							channel--;
 							if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
 							setState(GatewayStatus::Connecting);
 							break;
@@ -679,15 +684,15 @@ void ESPNow::upkeep () {
 
 				// Send heartbeat if not waiting for response
 				if (!WaitingForHeartbeatResponse) {
-					LastHeartbeatSendTime = millis();
+					LastHeartbeatSendTime = now;
 					SendHeartbeat();
 				}
 			}
 
 			#if SENDTESTINGFRAMES
 			// Send packet data at 100 packets per second (10ms interval)
-			if (millis() - LastPacketSendTime >= 1000/200) {
-				LastPacketSendTime = millis();
+			if (now - LastPacketSendTime >= 1000/200) {
+				LastPacketSendTime = now;
 				ESPNowPacketMessage packet;
 				packet.len = 16;
 				memcpy(packet.data, "Hello World!1234", 16); //Example data

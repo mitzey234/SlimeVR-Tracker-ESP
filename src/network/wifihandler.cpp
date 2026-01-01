@@ -155,7 +155,9 @@ void WiFiNetwork::upkeep() {
 		if (millis() - lastRssiSample >= 2000) {
 			lastRssiSample = millis();
 			uint8_t signalStrength = WiFi.RSSI();
+#if !USE_ESPNOW
 			networkConnection.sendSignalStrength(signalStrength);
+#endif
 		}
 		return;
 	}

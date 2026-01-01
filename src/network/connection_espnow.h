@@ -34,7 +34,7 @@
 #include "packets.h"
 #include "quat.h"
 #include "sensors/sensor.h"
-#include "wifihandler.h"
+#include "espnowhandler.h"
 
 namespace SlimeVR::Network {
 
@@ -48,17 +48,8 @@ namespace SlimeVR::Network {
 
 class ConnectionESPNOW {
 public:
-	ConnectionESPNOW() {
-#ifdef SERVER_IP
-		m_ServerHost.fromString(SERVER_IP);
-#endif
+	ConnectionESPNOW() {}
 
-#ifdef SERVER_PORT
-		m_ServerPort = SERVER_PORT;
-#endif
-	}
-
-	void searchForServer();
 	void update();
 	void reset();
 	bool isConnected() const { return m_Connected; }
@@ -74,7 +65,7 @@ public:
 	void sendPacket3_Status(); // Every second
 	void sendPacket4_QuatMag(const Quat& quat, const Vector3& mag); // When mag data available (~200ms max)
 
-	// Legacy compatibility methods (deprecated - use packet methods above)
+	// Legacy compatibility methods which capture the latest data to be sent in the next packet
 	// PACKET_ACCEL 4
 	void sendSensorAcceleration(uint8_t sensorId, Vector3 vector);
 
@@ -88,24 +79,10 @@ public:
 	void sendSensorError(uint8_t sensorId, uint8_t error);
 
 	// PACKET_ROTATION_DATA 17
-	void sendRotationData(
-		uint8_t sensorId,
-		Quat* const quaternion,
-		uint8_t dataType,
-		uint8_t accuracyInfo
-	);
-
-	// PACKET_MAGNETOMETER_ACCURACY 18
-	void sendMagnetometerAccuracy(uint8_t sensorId, float accuracyInfo);
-
-	// PACKET_SIGNAL_STRENGTH 19
-	void sendSignalStrength(uint8_t signalStrength);
+	void sendRotationData(uint8_t sensorId, Quat* const quaternion, uint8_t dataType, uint8_t accuracyInfo);
 
 	// PACKET_TEMPERATURE 20
 	void sendTemperature(uint8_t sensorId, float temperature);
-
-	// PACKET_FEATURE_FLAGS 22
-	void sendFeatureFlags();
 
 	// PACKET_FLEX_DATA 26
 	void sendFlexData(uint8_t sensorId, float flexLevel);
@@ -143,113 +120,24 @@ public:
 	);
 #endif
 
-	const ServerFeatures& getServerFeatureFlags() { return m_ServerFeatures; }
-
 private:
-	void updateSensorState(std::vector<std::unique_ptr<::Sensor>>& sensors);
-	void maybeRequestFeatureFlags();
-	bool isSensorStateUpdated(int i, std::unique_ptr<::Sensor>& sensor);
-
 	bool beginPacket();
 	bool endPacket();
 
-	size_t write(const uint8_t* buffer, size_t size);
-	size_t write(uint8_t byte);
-
-	bool sendPacketType(SendPacketType type);
-	bool sendPacketNumber();
-	bool sendFloat(float f);
-	bool sendByte(uint8_t c);
-	bool sendShort(uint16_t i);
-	bool sendInt(uint32_t i);
-	bool sendLong(uint64_t l);
-	bool sendBytes(const uint8_t* c, size_t length);
-	bool sendShortString(const char* str);
-	bool sendLongString(const char* str);
-
-	template <typename Packet>
-	bool sendPacket(
-		SendPacketType type,
-		Packet packet,
-		std::optional<uint64_t> packetNumberOverride = std::nullopt
-	) {
-		MUST_TRANSFER_BOOL(beginPacket());
-		MUST_TRANSFER_BOOL(sendPacketType(type));
-		if (packetNumberOverride) {
-			MUST_TRANSFER_BOOL(sendLong(*packetNumberOverride));
-		} else {
-			MUST_TRANSFER_BOOL(sendPacketNumber());
-		}
-
-		MUST_TRANSFER_BOOL(
-			sendBytes(reinterpret_cast<uint8_t*>(&packet), sizeof(Packet))
-		);
-
-		return endPacket();
-	}
-
-	template <typename Callback>
-	bool sendPacketCallback(
-		SendPacketType type,
-		Callback bodyCallback,
-		std::optional<uint64_t> packetNumberOverride = std::nullopt
-	) {
-		MUST_TRANSFER_BOOL(beginPacket());
-		MUST_TRANSFER_BOOL(sendPacketType(type));
-		if (packetNumberOverride) {
-			MUST_TRANSFER_BOOL(sendLong(*packetNumberOverride));
-		} else {
-			MUST_TRANSFER_BOOL(sendPacketNumber());
-		}
-
-		MUST_TRANSFER_BOOL(bodyCallback());
-
-		return endPacket();
-	}
-
 	int getWriteError();
 
-	void returnLastPacket(int len);
-
-	// PACKET_HEARTBEAT 0
-	void sendHeartbeat();
-
-	// PACKET_HANDSHAKE 3
-	void sendTrackerDiscovery();
-
-	// PACKET_SENSOR_INFO 15
-	void sendSensorInfo(::Sensor& sensor);
-
-	void sendAcknowledgeConfigChange(uint8_t sensorId, SensorToggles configType);
-
 	bool m_Connected = true;
-	SlimeVR::Logging::Logger m_Logger = SlimeVR::Logging::Logger("UDPConnection");
+	SlimeVR::Logging::Logger m_Logger = SlimeVR::Logging::Logger("ESPNOWConnection");
 
-	WiFiUDP m_UDP;
 	unsigned char m_Packet[128];  // buffer for incoming packets
 	uint64_t m_PacketNumber = 0;
 
-	int m_ServerPort = 6969;
-	IPAddress m_ServerHost = IPAddress(255, 255, 255, 255);
-	unsigned long m_LastConnectionAttemptTimestamp;
-	unsigned long m_LastPacketTimestamp;
-
 	SensorStatus m_AckedSensorState[MAX_SENSORS_COUNT] = {SensorStatus::SENSOR_OFFLINE};
-	SlimeVR::Configuration::SensorConfigBits m_AckedSensorConfigData[MAX_SENSORS_COUNT]
-		= {};
-	bool m_AckedSensorCalibration[MAX_SENSORS_COUNT] = {false};
-	unsigned long m_LastSensorInfoPacketTimestamp = 0;
-	unsigned long m_ErrorSendingWaitUntilTimestamp = 0;
 
-	uint8_t m_FeatureFlagsRequestAttempts = 0;
-	unsigned long m_FeatureFlagsRequestTimestamp = millis();
-	ServerFeatures m_ServerFeatures{};
+	unsigned long m_ErrorSendingWaitUntilTimestamp = 0;
 
 	bool m_IsBundle = false;
 	uint16_t m_BundlePacketPosition = 0;
-	uint16_t m_BundlePacketInnerCount = 0;
-
-	unsigned char m_Buf[8];
 
 	uint8_t peer_addr[6];
 
