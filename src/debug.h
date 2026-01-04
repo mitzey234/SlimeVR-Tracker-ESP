@@ -124,4 +124,8 @@
 #define SENDTESTINGFRAMES false
 #endif
 
+#ifndef DONGLE_BASED_LIMITER
+#define DONGLE_BASED_LIMITER false
+#endif
+
 #endif  // SLIMEVR_DEBUG_H_

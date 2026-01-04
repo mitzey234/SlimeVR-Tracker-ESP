@@ -160,33 +160,35 @@ void ConnectionESPNOW::reset() {
 
 void ConnectionESPNOW::update() {
 	auto nowUs = micros();
+	auto& sensors = sensorManager.getSensors();
 
-	// Static timing variables for packet scheduling
 	static unsigned long lastPacket0Time = 0;
 	static unsigned long lastPacket1Time = 0;
 	static unsigned long lastPacket3Time = 0;
 	static unsigned long lastPacket4Time = 0;
+	static unsigned long lastSensorSearchTime = 0;
 	static int primarySensorId = -1; // ID of the sensor we're using for data
 
-	auto& sensors = sensorManager.getSensors();
-
 	// Find and stick with first working sensor
-	if (primarySensorId == -1 || primarySensorId >= (int)sensors.size() ||
-	    !sensors[primarySensorId] || sensors[primarySensorId]->getSensorState() != SensorStatus::SENSOR_OK) {
+	if (primarySensorId == -1 || primarySensorId >= (int)sensors.size() || !sensors[primarySensorId] || sensors[primarySensorId]->getSensorState() != SensorStatus::SENSOR_OK) {
 		// Need to find a working sensor
 		primarySensorId = -1;
+		if (nowUs - lastSensorSearchTime < 1000000) return;
+		lastSensorSearchTime = nowUs;
+		Serial.println("[ESPNOW] Searching for primary sensor...");
+		statusManager.setStatus(SlimeVR::Status::IMU_ERROR, true);
 		for (size_t i = 0; i < sensors.size(); i++) {
 			if (sensors[i] && sensors[i]->getSensorState() == SensorStatus::SENSOR_OK) {
 				primarySensorId = i;
+				statusManager.setStatus(SlimeVR::Status::IMU_ERROR, false);
 				break;
 			}
 		}
+		if (primarySensorId != -1) Serial.printf("[ESPNOW] Primary sensor set to %d\n", primarySensorId);
 	}
 
 	// If no working sensor found, skip data packets
-	if (primarySensorId == -1) {
-		return;
-	}
+	if (primarySensorId == -1) return;
 
 	// Packet 0: Device info every 500ms
 	if (nowUs - lastPacket0Time >= 500000) {
@@ -202,10 +204,15 @@ void ConnectionESPNOW::update() {
 
 	// Check if primary sensor has new data
 	if (m_HasQuatData[primarySensorId] && m_HasAccelData[primarySensorId]) {
-		// Packet 1: Full precision quat + accel (rate limited)
+		// Packet 1: Full precision quat + accel
+#if DONGLE_BASED_LIMITER
 		if (nowUs - lastPacket1Time >= m_minIntervalUs && m_ErrorSendingWaitUntilTimestamp <= nowUs) {
 			sendPacket1_QuatAccel(m_LastQuat[primarySensorId], m_LastAccel[primarySensorId]);
 			lastPacket1Time = nowUs;
+#else
+		if (m_ErrorSendingWaitUntilTimestamp <= nowUs) {
+			sendPacket1_QuatAccel(m_LastQuat[primarySensorId], m_LastAccel[primarySensorId]);
+#endif
 			m_HasQuatData[primarySensorId] = false;
 			m_HasAccelData[primarySensorId] = false;
 		}

@@ -33,7 +33,7 @@ void ESPNow::setUp() {
 	WiFi.mode(WIFI_STA);
 #if !ESP8266
 	esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
-	esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
+	//esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
 	WiFi.setChannel(channel);
 
 	rate_config.phymode = WIFI_PHY_MODE_HT20;
@@ -126,8 +126,6 @@ const uint8_t* ESPNow::getGateway() {
 const uint8_t* ESPNow::getSecurityCode() {
 	return configuration.getESPNowSecurityCode();
 }
-
-//TODO: Implement RSSI using networkConnection.sendSignalStrength(signalStrength);
 
 bool ESPNow::isConnected() const {
 	return state == GatewayStatus::Connected && hasGatewayAddress;
