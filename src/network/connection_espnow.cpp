@@ -90,16 +90,7 @@ bool ConnectionESPNOW::endPacket() {
 	memcpy(espNowMessage.data, m_Packet, m_BundlePacketPosition);
 	espNowMessage.len = m_BundlePacketPosition;
 
-	auto result = esp_now_send(espNow.getInstance().gatewayAddress, (uint8_t*)&espNowMessage, 2 + espNowMessage.len);
-#if ESP8266
-	if (result != ERR_OK) {
-#else
-	if (result != ESP_OK) {
-#endif
-		Serial.printf("[ESPNOW] Error sending packet: %d\n", result);
-		m_ErrorSendingWaitUntilTimestamp = micros() + 500000; // Wait 500ms before next send attempt
-		return false;
-	}
+	espNow.queueMessage(espNow.getInstance().gatewayAddress, (uint8_t*)&espNowMessage, 2 + espNowMessage.len);
 	m_BundlePacketPosition = 0;
 	return true;
 }

@@ -43,11 +43,11 @@ SlimeVR::Configuration::Configuration configuration;
 SlimeVR::Network::Manager networkManager;
 #if USE_ESPNOW
 SlimeVR::Network::ConnectionESPNOW networkConnection;
+SlimeVR::ESPNow& espNow = SlimeVR::ESPNow::getInstance();
 #else
 SlimeVR::Network::Connection networkConnection;
 #endif
 SlimeVR::WiFiNetwork wifiNetwork;
-SlimeVR::ESPNow& espNow = SlimeVR::ESPNow::getInstance();
 SlimeVR::WifiProvisioning wifiProvisioning;
 
 #if DEBUG_MEASURE_SENSOR_TIME_TAKEN

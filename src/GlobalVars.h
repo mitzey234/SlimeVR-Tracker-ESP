@@ -47,10 +47,10 @@ extern SlimeVR::Sensors::SensorManager sensorManager;
 extern SlimeVR::Network::Manager networkManager;
 #if USE_ESPNOW
 extern SlimeVR::Network::ConnectionESPNOW networkConnection;
+extern SlimeVR::ESPNow& espNow;
 #else
 extern SlimeVR::Network::Connection networkConnection;
 #endif
 extern BatteryMonitor battery;
 extern SlimeVR::WiFiNetwork wifiNetwork;
-extern SlimeVR::ESPNow& espNow;
 extern SlimeVR::WifiProvisioning wifiProvisioning;

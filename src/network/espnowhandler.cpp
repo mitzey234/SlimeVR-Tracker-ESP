@@ -17,8 +17,10 @@ ESPNow &ESPNow::getInstance() {
     return instance;
 }
 
-unsigned int &ESPNow::getChannel() {
-	return getInstance().channel;
+//Gets the actual current WiFi channel being used
+unsigned int ESPNow::getChannel() {
+	if (getInstance().state == GatewayStatus::NotSetup) return getInstance().channels[0];
+	return WiFi.channel();
 }
 
 void ESPNow::setUp() {
@@ -28,13 +30,17 @@ void ESPNow::setUp() {
 		return;
 	}
 
-	channel = 0;
+	channelIndex = 0;
 
 	WiFi.mode(WIFI_STA);
 #if !ESP8266
 	esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
 	//esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
-	WiFi.setChannel(channel);
+	auto result = WiFi.setChannel(1);
+	if (result != ESP_OK) {
+		Serial.println("[ESPNow] Failed to set WiFi channel for init: " + String(result));
+		return;
+	}
 
 	rate_config.phymode = WIFI_PHY_MODE_HT20;
     rate_config.rate = WIFI_PHY_RATE_MCS7_SGI;
@@ -42,7 +48,11 @@ void ESPNow::setUp() {
 #else
 	WiFi.setPhyMode(WIFI_PHY_MODE_11G);
 	//WiFi.setOutputPower(19.5);
-	wifi_set_channel(getChannel());
+	auto result = wifi_set_channel(1);
+	if (result != true) {
+		Serial.println("[ESPNow] Failed to set WiFi channel for init: " + String(result));
+		return;
+	}
 #endif
 
 	auto startState = esp_now_init();
@@ -77,8 +87,12 @@ void ESPNow::setUp() {
 	uint8_t macaddr[6];
 	WiFi.macAddress(macaddr);
 
+	//Add the broadcast address as a peer to allow sending broadcast messages
+	uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	addPeer(broadcastAddress, true);
+
 	Serial.printf(
-		"[ESPNOW] address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+		"[ESPNow] address: %02x:%02x:%02x:%02x:%02x:%02x\n",
 		macaddr[0],
 		macaddr[1],
 		macaddr[2],
@@ -144,16 +158,7 @@ void ESPNow::OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *
 	uint8_t *data = const_cast<uint8_t*>(incomingData);
 	uint8_t len8 = (uint8_t)len;
 #endif
-	// Serial.printf(
-	// 	"[ESPNOW] Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x: ",
-	// 	len,
-	// 	mac[0],
-	// 	mac[1],
-	// 	mac[2],
-	// 	mac[3],
-	// 	mac[4],
-	// 	mac[5]
-	// );
+	// Serial.printf("[ESPNow] Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x: ", len, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	// for (int i = 0; i < len; i++) {
 	// 	Serial.printf("%02x", incomingData[i]);
 	// 	if (i < len - 1) Serial.print(" ");
@@ -184,7 +189,7 @@ void ESPNow::OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *
 			instance.HandleTrackerRate(mac, incomingData, len);
 			break;
 		default:
-			Serial.println("[ESPNOW] Unknown message type received");
+			Serial.println("[ESPNow] Unknown message type received");
 			break;
 	}
 #else
@@ -211,7 +216,7 @@ void ESPNow::OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *
 			instance.HandleTrackerRate(mac, data, len8);
 			break;
 		default:
-			Serial.println("[ESPNOW] Unknown message type received");
+			Serial.println("[ESPNow] Unknown message type received");
 			break;
 	}
 #endif
@@ -222,13 +227,13 @@ void ESPNow::HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len
 	if (state != GatewayStatus::Pairing || hasGatewayAddress) return;
 
 	if (len != sizeof(ESPNowPairingAnnouncementMessage)) {
-		Serial.printf("[ESPNOW] Invalid pairing announcement message length: expected %d, got %d\n", sizeof(ESPNowPairingAnnouncementMessage), len);
+		Serial.printf("[ESPNow] Invalid pairing announcement message length: expected %d, got %d\n", sizeof(ESPNowPairingAnnouncementMessage), len);
 		return;
 	}
-	Serial.println("[ESPNOW] Handling pairing announcement...");
+	Serial.println("[ESPNow] Handling pairing announcement...");
 	auto& message = *reinterpret_cast<ESPNowPairingAnnouncementMessage*>(data);
 	Serial.printf(
-		"[ESPNOW] Security bytes: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+		"[ESPNow] Security bytes: %02x %02x %02x %02x %02x %02x %02x %02x\n",
 		message.securityBytes[0],
 		message.securityBytes[1],
 		message.securityBytes[2],
@@ -244,64 +249,32 @@ void ESPNow::HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len
 	memcpy(gatewayAddress, mac, 6);
 
 	unsigned int announcedChannel = message.channel;
-	Serial.printf("[ESPNOW] Found gateway %02x:%02x:%02x:%02x:%02x:%02x on channel: %d\n",
+	Serial.printf("[ESPNow] Found gateway %02x:%02x:%02x:%02x:%02x:%02x on channel: %d\n",
 		gatewayAddress[0], gatewayAddress[1], gatewayAddress[2],
 		gatewayAddress[3], gatewayAddress[4], gatewayAddress[5],
 		announcedChannel
 	);
 
-	channel = announcedChannel;
 #if !ESP8266
 	WiFi.setChannel(announcedChannel);
 #else
 	wifi_set_channel(announcedChannel);
 #endif
 
-	// Add peer for communication
-#if ESP8266
-	auto addResult = esp_now_add_peer(gatewayAddress, ESP_NOW_ROLE_COMBO, announcedChannel, NULL, 0);
-	if (addResult != ERR_OK) {
-		Serial.printf("[ESPNOW] Failed to add peer: %d\n", addResult);
-		return;
-	}
-#else
-	// ESP32 requires esp_now_peer_info_t structure
-	esp_now_peer_info_t peerInfo = {};
-	memcpy(peerInfo.peer_addr, gatewayAddress, 6);
-	peerInfo.channel = announcedChannel;  // Use announced channel
-	peerInfo.encrypt = false;  // No encryption for now
-
-	auto addResult = esp_now_add_peer(&peerInfo);
-	if (addResult != ESP_OK) {
-		Serial.printf("[ESPNOW] Failed to add peer: %d\n", addResult);
-		return;
-	} else {
-		esp_now_set_peer_rate_config(peerInfo.peer_addr, &rate_config);
-	}
-#endif
-
 	hasGatewayAddress = true;
-	Serial.println("[ESPNOW] Attempting to pair with gateway...");
+	Serial.println("[ESPNow] Attempting to pair with gateway...");
 	PairingStartTime = millis();
 }
 
 void ESPNow::SendPairingRequest() {
 	if (!hasGatewayAddress) {
-		Serial.println("[ESPNOW] No gateway address set, cannot send pairing request");
+		Serial.println("[ESPNow] No gateway address set, cannot send pairing request");
 		return;
 	}
 	ESPNowPairingMessage pairRequest;
 	memcpy(pairRequest.securityBytes, securityCode, 8);
-	auto result = esp_now_send(gatewayAddress, reinterpret_cast<uint8_t*>(&pairRequest), sizeof(ESPNowPairingMessage));
-#if ESP8266
-	if (result != ERR_OK) {
-#else
-	if (result != ESP_OK) {
-#endif
-		Serial.println("[ESPNOW] Error sending pairing request: " + String(result));
-		return;
-	}
-	Serial.println("[ESPNOW] Pairing request sent to: " +
+	queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&pairRequest), sizeof(ESPNowPairingMessage), false, true);
+	Serial.println("[ESPNow] Pairing request sent to: " +
 		String(gatewayAddress[0], HEX) + ":" +
 		String(gatewayAddress[1], HEX) + ":" +
 		String(gatewayAddress[2], HEX) + ":" +
@@ -314,19 +287,19 @@ void ESPNow::SendPairingRequest() {
 void ESPNow::HandlePairingResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (state != GatewayStatus::Pairing || !hasGatewayAddress) return;
 	// Handle pairing response logic here
-	Serial.println("[ESPNOW] Successfully paired with gateway, establishing connection...");
+	Serial.println("[ESPNow] Successfully paired with gateway, establishing connection...");
 
 	// Save security code and gateway address to persistent storage
 	configuration.setESPNowGateway(gatewayAddress, securityCode);
 	Serial.printf(
-		"[ESPNOW] Saved gateway %02x:%02x:%02x:%02x:%02x:%02x to configuration\n",
+		"[ESPNow] Saved gateway %02x:%02x:%02x:%02x:%02x:%02x to configuration\n",
 		gatewayAddress[0], gatewayAddress[1], gatewayAddress[2],
 		gatewayAddress[3], gatewayAddress[4], gatewayAddress[5]
 	);
 
 	esp_now_del_peer(gatewayAddress);
 
-	channel--;
+	channelIndex--;
 
 	// For simplicity, assume pairing is always successful
 	setState(GatewayStatus::Connecting);
@@ -334,29 +307,22 @@ void ESPNow::HandlePairingResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 
 void ESPNow::SendHandshakeRequest() {
 	if (!hasGatewayAddress) {
-		Serial.println("[ESPNOW] No gateway address set, cannot send handshake request");
+		Serial.println("[ESPNow] No gateway address set, cannot send handshake request");
 		return;
 	}
 	ESPNowConnectionMessage handshakeRequest;
 	memcpy(handshakeRequest.securityBytes, securityCode, 8);
-	auto result = esp_now_send(gatewayAddress, reinterpret_cast<uint8_t*>(&handshakeRequest), sizeof(ESPNowConnectionMessage));
-#if ESP8266
-	if (result != ERR_OK) {
-#else
-	if (result != ESP_OK) {
-#endif
-		Serial.println("[ESPNOW] Error sending handshake request: " + String(result));
-		return;
-	}
+	//Serial.println("[ESPNow] Sending handshake request");
+	queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&handshakeRequest), sizeof(ESPNowConnectionMessage), false, true);
 }
 
 void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (state != GatewayStatus::Connecting || !hasGatewayAddress) return;
 	// Handle handshake response logic here
-	Serial.println("[ESPNOW] Handshake response received, connection established");
+	//Serial.println("[ESPNow] Handshake response received, connection established");
 
 	auto& ackMessage = *reinterpret_cast<ESPNowConnectionAckMessage*>(data);
-	Serial.printf("[ESPNOW] Assigned channel: %d and tracker ID: %d\n", ackMessage.channel, ackMessage.trackerId);
+	Serial.printf("[ESPNow] Assigned channel: %d and tracker ID: %d\n", ackMessage.channel, ackMessage.trackerId);
 
 	// Store the assigned tracker ID
 	trackerId = ackMessage.trackerId;
@@ -366,12 +332,10 @@ void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) 
 	WaitingForHeartbeatResponse = false;
 	MissedHeartbeats = 0;
 
-	channel = ackMessage.channel;
-
 #if !ESP8266
-	WiFi.setChannel(channel);
+	WiFi.setChannel(ackMessage.channel);
 #else
-	wifi_set_channel(channel);
+	wifi_set_channel(ackMessage.channel);
 #endif
 
 	setState(GatewayStatus::Connected);
@@ -379,7 +343,7 @@ void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) 
 
 void ESPNow::SendHeartbeat() {
 	if (!hasGatewayAddress) {
-		Serial.println("[ESPNOW] No gateway address set, cannot send heartbeat");
+		Serial.println("[ESPNow] No gateway address set, cannot send heartbeat");
 		return;
 	}
 
@@ -387,15 +351,8 @@ void ESPNow::SendHeartbeat() {
 	HeartbeatSequenceNumber = (uint16_t)random(0, 65536);
 	ESPNowHeartbeatEchoMessage heartbeat;
 	heartbeat.sequenceNumber = HeartbeatSequenceNumber;
-	auto result = esp_now_send(gatewayAddress, reinterpret_cast<uint8_t*>(&heartbeat), sizeof(ESPNowHeartbeatEchoMessage));
-#if ESP8266
-	if (result != ERR_OK) {
-#else
-	if (result != ESP_OK) {
-#endif
-		Serial.printf("[ESPNOW] Error sending heartbeat: %d\n", result);
-		return;
-	}
+	//Serial.printf("[ESPNow] Sending heartbeat - Seq: %u\n", HeartbeatSequenceNumber);
+	queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&heartbeat), sizeof(ESPNowHeartbeatEchoMessage), true);
 
 	HeartbeatSentTimestamp = millis();
 	WaitingForHeartbeatResponse = true;
@@ -404,12 +361,12 @@ void ESPNow::SendHeartbeat() {
 void ESPNow::HandleHeartbeatResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (state != GatewayStatus::Connected || !hasGatewayAddress) return;
 	if (!WaitingForHeartbeatResponse) {
-		//Serial.println("[ESPNOW] Received unexpected heartbeat response");
+		//Serial.println("[ESPNow] Received unexpected heartbeat response");
 		return;
 	}
 
 	if (len != sizeof(ESPNowHeartbeatResponseMessage)) {
-		//Serial.printf("[ESPNOW] Invalid heartbeat response length: expected %d, got %d\n", sizeof(ESPNowHeartbeatResponseMessage), len);
+		//Serial.printf("[ESPNow] Invalid heartbeat response length: expected %d, got %d\n", sizeof(ESPNowHeartbeatResponseMessage), len);
 		return;
 	}
 
@@ -417,12 +374,12 @@ void ESPNow::HandleHeartbeatResponse(uint8_t * mac, uint8_t *data, uint8_t len) 
 	uint16_t receivedSeq = responseMessage.sequenceNumber;
 
 	if (receivedSeq != HeartbeatSequenceNumber) {
-		//Serial.printf("[ESPNOW] Heartbeat sequence mismatch: expected %u, got %u\n", HeartbeatSequenceNumber, receivedSeq);
+		//Serial.printf("[ESPNow] Heartbeat sequence mismatch: expected %u, got %u\n", HeartbeatSequenceNumber, receivedSeq);
 		return;
 	}
 
 	unsigned long latency = millis() - HeartbeatSentTimestamp;
-	Serial.printf("[ESPNOW] Heartbeat response received - Seq: %u, Latency: %lu ms\n", receivedSeq, latency);	WaitingForHeartbeatResponse = false;
+	Serial.printf("[ESPNow] Heartbeat response received - Seq: %u, Latency: %lu ms\n", receivedSeq, latency);	WaitingForHeartbeatResponse = false;
 	MissedHeartbeats = 0;
 }
 
@@ -430,7 +387,7 @@ void ESPNow::HandleHeartbeatEcho(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (state != GatewayStatus::Connected || !hasGatewayAddress || memcmp(mac, gatewayAddress, 6) != 0) return;
 
 	if (len != sizeof(ESPNowHeartbeatEchoMessage)) {
-		Serial.printf("[ESPNOW] Invalid heartbeat echo length: expected %d, got %d\n", sizeof(ESPNowHeartbeatEchoMessage), len);
+		Serial.printf("[ESPNow] Invalid heartbeat echo length: expected %d, got %d\n", sizeof(ESPNowHeartbeatEchoMessage), len);
 		return;
 	}
 
@@ -439,28 +396,21 @@ void ESPNow::HandleHeartbeatEcho(uint8_t * mac, uint8_t *data, uint8_t len) {
 	ESPNowHeartbeatResponseMessage heartbeatResponse;
 	auto& echoMessage = *reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
 	heartbeatResponse.sequenceNumber = echoMessage.sequenceNumber;
-	auto result = esp_now_send(mac, reinterpret_cast<uint8_t*>(&heartbeatResponse), sizeof(ESPNowHeartbeatResponseMessage));
-#if ESP8266
-	if (result != ERR_OK) {
-#else
-	if (result != ESP_OK) {
-#endif
-		Serial.println("[ESPNOW] Error sending heartbeat response: " + String(result));
-		return;
-	}
+	//Serial.printf("[ESPNow] Heartbeat echo received - Seq: %u, sending response\n", echoMessage.sequenceNumber);
+	queueMessage(mac, reinterpret_cast<uint8_t*>(&heartbeatResponse), sizeof(ESPNowHeartbeatResponseMessage));
 }
 
 void ESPNow::HandleUnpair(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (!hasGatewayAddress) return;
 
 	if (len != sizeof(ESPNowUnpairMessage)) {
-		Serial.printf("[ESPNOW] Invalid unpair message length: expected %d, got %d\n", sizeof(ESPNowUnpairMessage), len);
+		Serial.printf("[ESPNow] Invalid unpair message length: expected %d, got %d\n", sizeof(ESPNowUnpairMessage), len);
 		return;
 	}
 
 	// Verify MAC address matches current gateway
 	if (memcmp(mac, gatewayAddress, 6) != 0) {
-		Serial.println("[ESPNOW] Unpair request from unknown address, ignoring");
+		Serial.println("[ESPNow] Unpair request from unknown address, ignoring");
 		return;
 	}
 
@@ -468,14 +418,14 @@ void ESPNow::HandleUnpair(uint8_t * mac, uint8_t *data, uint8_t len) {
 
 	// Verify security code matches
 	if (memcmp(message.securityBytes, securityCode, 8) != 0) {
-		Serial.println("[ESPNOW] Unpair request with invalid security code, ignoring");
+		Serial.println("[ESPNow] Unpair request with invalid security code, ignoring");
 		return;
 	}
 
-	Serial.println("[ESPNOW] Received valid unpair request from gateway");
+	Serial.println("[ESPNow] Received valid unpair request from gateway");
 
 	// Remove peer
-	esp_now_del_peer(gatewayAddress);
+	deletePeer(gatewayAddress);
 
 	// Clear gateway address and security code from memory
 	memset(gatewayAddress, 0, 6);
@@ -487,7 +437,11 @@ void ESPNow::HandleUnpair(uint8_t * mac, uint8_t *data, uint8_t len) {
 	// Clear from persistent storage
 	configuration.setESPNowGateway(nullptr, nullptr);
 
-	Serial.println("[ESPNOW] Unpaired from gateway, entering pairing mode");
+	Serial.println("[ESPNow] Unpaired from gateway, entering pairing mode");
+
+	//Clear message buffers
+	queueHead = 0;
+	queueTail = 0;
 
 	// Return to pairing mode to find new gateway
 	Pairing();
@@ -497,22 +451,194 @@ void ESPNow::HandleTrackerRate(uint8_t * mac, uint8_t *data, uint8_t len) {
 	if (!this->hasGatewayAddress) return;
 
 	if (len != sizeof(ESPNowTrackerRateMessage)) {
-		Serial.printf("[ESPNOW] Invalid tracker rate message length: expected %d, got %d\n", sizeof(ESPNowTrackerRateMessage), len);
+		Serial.printf("[ESPNow] Invalid tracker rate message length: expected %d, got %d\n", sizeof(ESPNowTrackerRateMessage), len);
 		return;
 	}
 
 	// Verify MAC address matches current gateway
 	if (memcmp(mac, this->gatewayAddress, 6) != 0) {
-		Serial.println("[ESPNOW] Tracker rate request from unknown address, ignoring");
+		Serial.println("[ESPNow] Tracker rate request from unknown address, ignoring");
 		return;
 	}
 
 	auto& message = *reinterpret_cast<ESPNowTrackerRateMessage*>(const_cast<uint8_t*>(data));
 
-	Serial.printf("[ESPNOW] Received tracker rate request: %u Hz\n", message.rateHz);
+	Serial.printf("[ESPNow] Received tracker rate request: %u Hz\n", message.rateHz);
 
 	// Forward to network connection to update rate limiting
 	networkConnection.setTrackerRate(message.rateHz);
+}
+
+// Queue a message for sending with rate limiting
+void ESPNow::queueMessage(const uint8_t peerMac[6], const uint8_t *data, size_t dataLen, bool isHeartbeat, bool ephemeral) {
+    // Validate message data
+    if (dataLen == 0 || dataLen > 128) {
+        Serial.printf("[ESPNow] Invalid message size %zu for " MACSTR ", skipping\n", dataLen, MAC2ARGS(peerMac));
+        return;
+    }
+
+    // Check if queue is full
+    size_t nextTail = (queueTail + 1) % maxQueueSize;
+    if (nextTail == queueHead) {
+        // Calculate queue depth for diagnostic output
+        size_t queueDepth = (queueTail >= queueHead) ? (queueTail - queueHead) : (maxQueueSize - queueHead + queueTail);
+        Serial.printf("[ESPNow] Send queue full! Dropping message to " MACSTR " (queue: %zu/%zu, depth: %zu)\n", MAC2ARGS(peerMac), maxQueueSize, maxQueueSize, queueDepth);
+        return;
+    }
+
+    // Add message to queue
+    PendingMessage &msg = sendQueue[queueTail];
+    memcpy(msg.peerMac, peerMac, 6);
+    memcpy(msg.data, data, dataLen);
+    msg.dataLen = dataLen;
+    msg.ephemeral = ephemeral;
+	msg.isHeartbeat = isHeartbeat;
+    queueTail = nextTail;
+
+	processSendQueue();
+}
+
+// Queue a message for sending with rate limiting
+void ESPNow::queueMessage(const uint8_t peerMac[6], const uint8_t *data, size_t dataLen, bool isHeartbeat) {
+	queueMessage(peerMac, data, dataLen, isHeartbeat, false);
+}
+
+// Queue a message for sending with rate limiting
+void ESPNow::queueMessage(const uint8_t peerMac[6], const uint8_t *data, size_t dataLen) {
+    queueMessage(peerMac, data, dataLen, false);
+}
+
+// Process queued messages with rate limiting
+void ESPNow::processSendQueue() {
+    if (queueHead == queueTail) return; // Queue is empty
+
+    unsigned long currentTime = micros();
+	unsigned long deltaTime = currentTime - lastSendTime;
+	//Serial.printf("[ESPNow] Processing send queue %lu\n", deltaTime);
+    if (deltaTime >= sendRateLimit*1000UL) {
+        PendingMessage &msg = sendQueue[queueHead];
+
+        // Validate message data
+        if (msg.dataLen == 0 || msg.dataLen > 128) {
+            Serial.printf("[ESPNow] Invalid message size %zu for " MACSTR ", dropping\n", msg.dataLen, MAC2ARGS(msg.peerMac));
+            queueHead = (queueHead + 1) % maxQueueSize;
+            lastSendTime = currentTime;
+            return;
+        }
+
+        // Ensure peer is added before sending
+        if (!esp_now_is_peer_exist(msg.peerMac)) {
+            auto addResult = addPeer(msg.peerMac);
+#if ESP8266
+			if (addResult != ERR_OK) {
+#else
+            if (addResult != ESP_OK) {
+#endif
+                Serial.printf("[ESPNow] Failed to add peer " MACSTR " for queued message, error: %d\n", MAC2ARGS(msg.peerMac), addResult);
+                queueHead = (queueHead + 1) % maxQueueSize;
+                lastSendTime = currentTime;
+                return;
+            }
+        }
+
+        auto result = esp_now_send(msg.peerMac, msg.data, msg.dataLen);
+
+		if (msg.isHeartbeat) {
+			LastHeartbeatSendTime = currentTime / 1000UL;
+		}
+
+        if (msg.ephemeral) {
+            // Remove peer if message was ephemeral
+            deletePeer(msg.peerMac);
+        }
+
+#if ESP8266
+		if (result == ERR_OK) {
+#else
+        if (result == ESP_OK) {
+#endif
+            // Message sent successfully, remove from queue
+            queueHead = (queueHead + 1) % maxQueueSize;
+            lastSendTime = currentTime;
+#if ESP8266
+		} else if (result == ERR_MEM) {
+#else
+        } else if (result == ESP_ERR_ESPNOW_NO_MEM) {
+#endif
+            // ESP-NOW internal buffer is full - retry this message later without advancing queue
+            // Don't update lastSendTime to allow immediate retry on next processSendQueue call
+            Serial.printf("[ESPNow] buffer full, retrying message to " MACSTR ", error: %d\n", MAC2ARGS(msg.peerMac), result);
+        } else {
+            // Other errors - log and drop the message
+            Serial.printf("[ESPNow] Failed to send queued message to " MACSTR ", error: %d\n", MAC2ARGS(msg.peerMac), result);
+            queueHead = (queueHead + 1) % maxQueueSize;
+            lastSendTime = currentTime;
+        }
+    }
+}
+
+// Adds a ESP-Now peer with the given MAC address
+uint8_t ESPNow::addPeer(uint8_t peerMac[6], bool defaultConfig) {
+	// Check if peer already exists
+    if (esp_now_is_peer_exist(peerMac)) {
+        Serial.printf("[ESPNow] Peer " MACSTR " already exists.\n", MAC2ARGS(peerMac));
+#if ESP8266
+        return ERR_OK; // Peer already exists, return success
+#else
+		return ESP_OK; // Peer already exists, return success
+#endif
+    }
+#if ESP8266
+	auto result = esp_now_add_peer(peerMac, ESP_NOW_ROLE_COMBO, 0, NULL, 0);
+	if (result != ERR_OK) {
+		Serial.printf("[ESPNow] Failed to add peer, error: %d\n", result);
+		return result;
+	}
+#else
+	esp_now_peer_info_t peerInfo = {};
+	memcpy(peerInfo.peer_addr, peerMac, 6);
+	peerInfo.channel = 0;
+	peerInfo.encrypt = false;
+	peerInfo.ifidx = WIFI_IF_STA;
+	auto result = esp_now_add_peer(&peerInfo);
+	if (result != ESP_OK) {
+		Serial.printf("[ESPNow] Failed to add peer, error: %d\n", result);
+		return result;
+	} else if (!defaultConfig) {
+		result = esp_now_set_peer_rate_config(peerInfo.peer_addr, &rate_config);
+		if (result != ESP_OK) {
+			Serial.printf("[ESPNow] Failed to set peer rate config, error: %d\n", result);
+			return result;
+		}
+	}
+#endif
+    return result;
+}
+
+// Adds a ESP-Now peer with the given MAC address
+uint8_t ESPNow::addPeer(uint8_t peerMac[6]) {
+	return addPeer(peerMac, false);
+}
+
+// Deletes a ESP-Now peer with the given MAC address
+bool ESPNow::deletePeer(uint8_t peerMac[6]) {
+	if (!esp_now_is_peer_exist(peerMac)) {
+        Serial.printf("Peer " MACSTR " does not exist.\n", MAC2ARGS(peerMac));
+        return true; // Peer does not exist, return success
+    }
+
+    //Serial.printf("[ESPNow] Deleting peer " MACSTR "\n", MAC2ARGS(peerMac));
+    auto result = esp_now_del_peer(peerMac);
+#if !ESP8266
+	auto compareAgainst = ESP_OK;
+#else
+	auto compareAgainst = ERR_OK;
+#endif
+	if (result != compareAgainst) {
+		Serial.printf("[ESPNow] Failed to delete peer " MACSTR ", error: %d\n", MAC2ARGS(peerMac), result);
+		return false;
+	}
+    return true;
 }
 
 void ESPNow::Connect () {
@@ -529,18 +655,18 @@ void ESPNow::setState (GatewayStatus newState) {
 	state = newState;
 	switch (state) {
 		case GatewayStatus::NotSetup:
-			Serial.println("[ESPNow]: Not set up");
+			Serial.println("[ESPNow] Not set up");
 			break;
 		case GatewayStatus::SearchingForGateway: {
-			Serial.println("[ESPNow]: Searching for gateway");
+			Serial.println("[ESPNow] Searching for gateway");
 			const uint8_t* gateway = getGateway();
 			const uint8_t* security = getSecurityCode();
 			if (gateway == nullptr || security == nullptr) {
-				Serial.println("[ESPNow]: No gateway address found, entering pairing mode");
+				Serial.println("[ESPNow] No gateway address found, entering pairing mode");
 				Pairing();
 				break;
 			}
-			Serial.println("[ESPNow]: Gateway address found, connecting...");
+			Serial.println("[ESPNow] Gateway address found, connecting...");
 			memcpy(gatewayAddress, gateway, 6);
 			memcpy(securityCode, security, 8);
 			hasGatewayAddress = true;
@@ -550,26 +676,14 @@ void ESPNow::setState (GatewayStatus newState) {
 			break;
 		}
 		case GatewayStatus::Connecting:
-			Serial.println("[ESPNow]: Connecting to gateway");
+			Serial.println("[ESPNow] Connecting to gateway");
 			statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, true);
 			statusManager.setStatus(SlimeVR::Status::PAIRING_MODE, false);
-#if ESP8266
-			esp_now_add_peer(gatewayAddress, ESP_NOW_ROLE_COMBO, 0, NULL, 0);
-#else
-			{
-				esp_now_peer_info_t peerInfo = {};
-				memcpy(peerInfo.peer_addr, gatewayAddress, 6);
-				peerInfo.channel = 0;
-				peerInfo.encrypt = false;
-				esp_now_add_peer(&peerInfo);
-				esp_now_set_peer_rate_config(peerInfo.peer_addr, &rate_config);
-			}
-#endif
 			break;
 		case GatewayStatus::Pairing:
 			if (!hasGatewayAddress) {
-				Serial.println("[ESPNow]: Starting Pairing mode");
-				esp_now_del_peer(gatewayAddress);
+				Serial.println("[ESPNow] Starting Pairing mode");
+				deletePeer(gatewayAddress);
 				std::fill_n(gatewayAddress, 6, 0);
 				std::fill_n(securityCode, 8, 0);
 				statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, false);
@@ -578,17 +692,69 @@ void ESPNow::setState (GatewayStatus newState) {
 			}
 			break;
 		case GatewayStatus::Connected:
-			Serial.println("[ESPNow]: Connected to gateway");
+			Serial.println("[ESPNow] Connected to gateway");
 			statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, false);
 			statusManager.setStatus(SlimeVR::Status::PAIRING_MODE, false);
 			break;
 		case GatewayStatus::Failed:
-			Serial.println("[ESPNow]: failed");
+			Serial.println("[ESPNow] failed");
 			break;
 	}
 }
 
+void ESPNow::incrementChannel () {
+	if (channelIndex < 0) {
+		channelIndex = 0;
+	} else if (channelIndex >= 0 && channelIndex < MAX_WIFI_CHANNEL_ARRAY) {
+		channelIndex = channelIndex + 1;
+	} else if (channelIndex >= MAX_WIFI_CHANNEL_ARRAY) {
+		channelIndex = 0;
+	}
+#if !ESP8266
+	auto result = WiFi.setChannel(channels[channelIndex]);
+	if (result != ESP_OK) {
+		Serial.println("[ESPNow] Failed to set WiFi channel: " + String(result));
+		return;
+	}
+#else
+	auto result = wifi_set_channel(channels[channelIndex]);
+	if (result != true) {
+		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", channels[channelIndex], result);
+		return;
+	}
+#endif
+	//Serial.printf("[ESPNow] Switched to channel %d\n", getChannel());
+}
+
+void ESPNow::singleIncrementChannel () {
+	int target = 0;
+	int current = getChannel();
+	if (current <= 0) {
+		target = 1;
+	} else if (current >= 1 && current < MAX_WIFI_CHANNEL) {
+		target = current + 1;
+	} else if (current >= MAX_WIFI_CHANNEL) {
+		target = 1;
+	}
+	#if !ESP8266
+	auto result = WiFi.setChannel(target);
+	if (result != ESP_OK) {
+		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", target, result);
+		return;
+	}
+#else
+	auto result = wifi_set_channel(target);
+	if (result != true) {
+		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", target, result);
+		return;
+	}
+#endif
+	//Serial.printf("[ESPNow] Switched to channel %d\n", getChannel());
+}
+
 void ESPNow::upkeep () {
+	processSendQueue();
+
 	auto now = millis();
 	switch (state) {
 		case GatewayStatus::NotSetup:
@@ -596,26 +762,15 @@ void ESPNow::upkeep () {
 		case GatewayStatus::SearchingForGateway: {
 			break;
 		}
-		case GatewayStatus::Connecting:
+		case GatewayStatus::Connecting: {
 			// Try to handshake with gateway
 			if (hasGatewayAddress) {
-				if (now - LastChannelSwitchTime >= 350) {
+				if (now - LastChannelSwitchTime >= 400) {
 					LastChannelSwitchTime = now;
-					if (channel == 0) {
-						channel = 1;
-					} else if (channel > 0 && channel < 11) {
-						channel = channel + 1;
-					} else if (channel >= 11) {
-						channel = 1;
-					}
-#if !ESP8266
-					WiFi.setChannel(channel);
-#else
-					wifi_set_channel(channel);
-#endif
-					Serial.printf("[ESPNow]: Connect gateway via channel %d\n", channel);
+					singleIncrementChannel();
+					Serial.printf("[ESPNow] Connect gateway via channel %d\n", getChannel());
 				}
-				if (now - LastHandshakeRequestTime < 500) {
+				if (now - LastHandshakeRequestTime < 200) {
 					//Don't spam requests
 					break;
 				}
@@ -625,31 +780,21 @@ void ESPNow::upkeep () {
 				setState(GatewayStatus::SearchingForGateway);
 			}
 			break;
-		case GatewayStatus::Pairing:
+		}
+		case GatewayStatus::Pairing: {
 			// Try to pair with gateway
-			if (!hasGatewayAddress && (now - LastChannelSwitchTime) >= 350) {
+			if (!hasGatewayAddress && (now - LastChannelSwitchTime) >= 400) {
 				LastChannelSwitchTime = now;
-				if (channel == 0) {
-					channel = 1;
-				} else if (channel > 0 && channel < 11) {
-					channel = channel + 1;
-				} else if (channel >= 11) {
-					channel = 1;
-				}
-#if !ESP8266
-				WiFi.setChannel(channel);
-#else
-				wifi_set_channel(channel);
-#endif
-				Serial.printf("[ESPNow]: Scanning channel %d for gateway\n", channel);
+				incrementChannel();
+				Serial.printf("[ESPNow] Scanning channel %d for gateway\n", getChannel());
 			}
 
 			if (now - PairingStartTime > 60000) {
-				Serial.println("[ESPNow]: Pairing timed out, restarting search for gateway");
+				Serial.println("[ESPNow] Pairing timed out, restarting search for gateway");
 				if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
 				Connect();
 			} else if (hasGatewayAddress) {
-				if (now - LastPairingRequestTime < 500) {
+				if (now - LastPairingRequestTime < 200) {
 					//Don't spam requests
 					break;
 				}
@@ -657,7 +802,8 @@ void ESPNow::upkeep () {
 				SendPairingRequest();
 			}
 			break;
-		case GatewayStatus::Connected:
+		}
+		case GatewayStatus::Connected: {
 			// Maintain connection with heartbeat
 			// Only run heartbeat logic once per second
 			if (now - LastHeartbeatSendTime >= 1000) {
@@ -666,11 +812,11 @@ void ESPNow::upkeep () {
 					// Check if timeout exceeded (1000ms)
 					if (now - HeartbeatSentTimestamp >= 1000) {
 						MissedHeartbeats++;
-						//Serial.printf("[ESPNOW] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
+						//Serial.printf("[ESPNow] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
 
 						if (MissedHeartbeats >= 5) {
-							Serial.println("[ESPNOW] Connection lost - 5 heartbeats missed");
-							channel--;
+							Serial.println("[ESPNow] Connection lost - 5 heartbeats missed");
+							channelIndex--;
 							if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
 							setState(GatewayStatus::Connecting);
 							break;
@@ -687,7 +833,7 @@ void ESPNow::upkeep () {
 				}
 			}
 
-			#if SENDTESTINGFRAMES
+#if SENDTESTINGFRAMES
 			// Send packet data at 100 packets per second (10ms interval)
 			if (now - LastPacketSendTime >= 1000/200) {
 				LastPacketSendTime = now;
@@ -697,20 +843,14 @@ void ESPNow::upkeep () {
 
 				// Only send the actual used portion: header (1) + len (1) + actual data length
 				size_t actualSize = 2 + packet.len;
-				auto result = esp_now_send(gatewayAddress, reinterpret_cast<uint8_t*>(&packet), actualSize);
-			#if ESP8266
-				if (result != ERR_OK) {
-			#else
-				if (result != ESP_OK) {
-			#endif
-					//Serial.printf("[ESPNOW] ERR: %d\n", result);
-				}
+				queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&packet), actualSize);
 			}
 #endif
 			break;
+		}
 		case GatewayStatus::Failed:
 			// Handle failure
 			break;
+		}
 	}
-}
 }  // namespace SlimeVR
