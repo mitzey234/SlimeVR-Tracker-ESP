@@ -126,7 +126,11 @@ public:
 
 	void incrementChannel();
 
-	void singleIncrementChannel ();
+	void singleIncrementChannel();
+
+	void singleIncrementChannel(bool reverse);
+
+	void setChannel (uint8_t channel);
 
 	uint8_t addPeer(uint8_t peerMac[6], bool defaultConfig);
 

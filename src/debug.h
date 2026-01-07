@@ -62,7 +62,7 @@
 // Sleeping options
 #define POWERSAVING_MODE POWER_SAVING_MODERATE  // Minimum causes sporadic data pauses
 #if POWERSAVING_MODE >= POWER_SAVING_MINIMUM
-#define TARGET_LOOPTIME_MICROS (samplingRateInMillis * 900)
+//#define TARGET_LOOPTIME_MICROS (samplingRateInMillis * 900)
 #endif
 
 // Packet bundling/aggregation

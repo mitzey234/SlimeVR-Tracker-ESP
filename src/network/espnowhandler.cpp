@@ -158,7 +158,7 @@ void ESPNow::OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *
 	uint8_t *data = const_cast<uint8_t*>(incomingData);
 	uint8_t len8 = (uint8_t)len;
 #endif
-	// Serial.printf("[ESPNow] Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x: ", len, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	//Serial.printf("[ESPNow] Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x: \n", len, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	// for (int i = 0; i < len; i++) {
 	// 	Serial.printf("%02x", incomingData[i]);
 	// 	if (i < len - 1) Serial.print(" ");
@@ -255,12 +255,7 @@ void ESPNow::HandlePairingAnnouncement(uint8_t * mac, uint8_t *data, uint8_t len
 		announcedChannel
 	);
 
-#if !ESP8266
-	WiFi.setChannel(announcedChannel);
-#else
-	wifi_set_channel(announcedChannel);
-#endif
-
+	setChannel(announcedChannel);
 	hasGatewayAddress = true;
 	Serial.println("[ESPNow] Attempting to pair with gateway...");
 	PairingStartTime = millis();
@@ -297,9 +292,9 @@ void ESPNow::HandlePairingResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 		gatewayAddress[3], gatewayAddress[4], gatewayAddress[5]
 	);
 
-	esp_now_del_peer(gatewayAddress);
+	singleIncrementChannel(true);
 
-	channelIndex--;
+	esp_now_del_peer(gatewayAddress);
 
 	// For simplicity, assume pairing is always successful
 	setState(GatewayStatus::Connecting);
@@ -544,7 +539,7 @@ void ESPNow::processSendQueue() {
         auto result = esp_now_send(msg.peerMac, msg.data, msg.dataLen);
 
 		if (msg.isHeartbeat) {
-			LastHeartbeatSendTime = currentTime / 1000UL;
+			LastHeartbeatSendTime = millis();
 		}
 
         if (msg.ephemeral) {
@@ -646,7 +641,10 @@ void ESPNow::Connect () {
 }
 
 void ESPNow::Pairing() {
-	hasGatewayAddress = false;
+	if (hasGatewayAddress) {
+		deletePeer(gatewayAddress);
+		hasGatewayAddress = false;
+	}
 	setState(GatewayStatus::Pairing);
 }
 
@@ -683,9 +681,6 @@ void ESPNow::setState (GatewayStatus newState) {
 		case GatewayStatus::Pairing:
 			if (!hasGatewayAddress) {
 				Serial.println("[ESPNow] Starting Pairing mode");
-				deletePeer(gatewayAddress);
-				std::fill_n(gatewayAddress, 6, 0);
-				std::fill_n(securityCode, 8, 0);
 				statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, false);
 				statusManager.setStatus(SlimeVR::Status::PAIRING_MODE, true);
 				PairingStartTime = millis();
@@ -710,7 +705,7 @@ void ESPNow::incrementChannel () {
 	} else if (channelIndex >= MAX_WIFI_CHANNEL_ARRAY) {
 		channelIndex = 0;
 	}
-#if !ESP8266
+#ifndef ESP8266
 	auto result = WiFi.setChannel(channels[channelIndex]);
 	if (result != ESP_OK) {
 		Serial.println("[ESPNow] Failed to set WiFi channel: " + String(result));
@@ -726,17 +721,25 @@ void ESPNow::incrementChannel () {
 	//Serial.printf("[ESPNow] Switched to channel %d\n", getChannel());
 }
 
-void ESPNow::singleIncrementChannel () {
+void ESPNow::singleIncrementChannel (bool reverse) {
 	int target = 0;
 	int current = getChannel();
-	if (current <= 0) {
-		target = 1;
-	} else if (current >= 1 && current < MAX_WIFI_CHANNEL) {
-		target = current + 1;
-	} else if (current >= MAX_WIFI_CHANNEL) {
-		target = 1;
+	if (reverse) {
+		if (current <= 1) {
+			target = MAX_WIFI_CHANNEL;
+		} else if (current > 1 && current <= MAX_WIFI_CHANNEL) {
+			target = current - 1;
+		}
+	} else {
+		if (current <= 0) {
+			target = 1;
+		} else if (current >= 1 && current < MAX_WIFI_CHANNEL) {
+			target = current + 1;
+		} else if (current >= MAX_WIFI_CHANNEL) {
+			target = 1;
+		}
 	}
-	#if !ESP8266
+#ifndef ESP8266
 	auto result = WiFi.setChannel(target);
 	if (result != ESP_OK) {
 		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", target, result);
@@ -752,6 +755,27 @@ void ESPNow::singleIncrementChannel () {
 	//Serial.printf("[ESPNow] Switched to channel %d\n", getChannel());
 }
 
+void ESPNow::singleIncrementChannel () {
+	singleIncrementChannel(false);
+}
+
+void ESPNow::setChannel (uint8_t channel) {
+#ifndef ESP8266
+	auto result = WiFi.setChannel(channel);
+	if (result != ESP_OK) {
+		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", channel, result);
+		return;
+	}
+#else
+	auto result = wifi_set_channel(channel);
+	if (result != true) {
+		Serial.printf("[ESPNow] Failed to set WiFi channel %d: %d\n", channel, result);
+		return;
+	}
+#endif
+	Serial.printf("[ESPNow] Switched to channel %d\n", getChannel());
+}
+
 void ESPNow::upkeep () {
 	processSendQueue();
 
@@ -765,12 +789,12 @@ void ESPNow::upkeep () {
 		case GatewayStatus::Connecting: {
 			// Try to handshake with gateway
 			if (hasGatewayAddress) {
-				if (now - LastChannelSwitchTime >= 400) {
+				if (now - LastChannelSwitchTime >= 300) {
 					LastChannelSwitchTime = now;
 					singleIncrementChannel();
 					Serial.printf("[ESPNow] Connect gateway via channel %d\n", getChannel());
 				}
-				if (now - LastHandshakeRequestTime < 200) {
+				if (now - LastHandshakeRequestTime < 150) {
 					//Don't spam requests
 					break;
 				}
@@ -791,7 +815,10 @@ void ESPNow::upkeep () {
 
 			if (now - PairingStartTime > 60000) {
 				Serial.println("[ESPNow] Pairing timed out, restarting search for gateway");
-				if (hasGatewayAddress) esp_now_del_peer(gatewayAddress);
+				if (hasGatewayAddress) {
+					esp_now_del_peer(gatewayAddress);
+					hasGatewayAddress = false;
+				}
 				Connect();
 			} else if (hasGatewayAddress) {
 				if (now - LastPairingRequestTime < 200) {
