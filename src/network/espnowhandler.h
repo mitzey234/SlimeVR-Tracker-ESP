@@ -27,7 +27,8 @@ public:
 		Connecting,
 		Pairing,
 		Connected,
-		Failed
+		Failed,
+		OTAUpdate
 	};
 
 	enum class ESPNowMessageTypes : uint8_t {
@@ -40,7 +41,9 @@ public:
 		TRACKER_DATA = 6, //Regular tracker data packet
 		PAIRING_ANNOUNCEMENT = 7, //When the gateway is announcing its presence for pairing
 		UNPAIR = 8, //When the tracker is unpairing from the gateway
-		TRACKER_RATE = 9 //When the gateway is setting the tracker polling rate
+		TRACKER_RATE = 9, //When the gateway is setting the tracker polling rate
+		ENTER_OTA_MODE = 10, // When the gateway is instructing the tracker to enter OTA update mode
+        ENTER_OTA_ACK = 11 // Acknowledgment from tracker to gateway to enter OTA update mode
 	};
 
 	unsigned int channels[5] = {2, 5, 8, 11, 14}; //Channels to scan for gateway
@@ -75,6 +78,12 @@ public:
 	void HandleUnpair(uint8_t * mac, uint8_t *data, uint8_t len);
 
 	void HandleTrackerRate(uint8_t * mac, uint8_t *data, uint8_t len);
+
+	void HandleOTAMessage(uint8_t * mac, uint8_t *data, uint8_t len);
+
+	void SendOTAAck();
+
+	void SendOTARequest();
 
 	unsigned long LastPairingRequestTime = 0;
 
@@ -162,5 +171,12 @@ public:
 	void queueMessage(const uint8_t peerMac[6], const uint8_t *data, size_t dataLen, bool isHeartbeat);
 	void queueMessage(const uint8_t peerMac[6], const uint8_t *data, size_t dataLen);
 	void processSendQueue();
+
+	uint8_t ota_auth[16];
+	long ota_portNum;
+	uint8_t ota_ip[4];
+
+	char ssid[33];
+    char password[65];
 };
 }  // namespace SlimeVR

@@ -9,6 +9,7 @@ enum Status {
 	WIFI_CONNECTING = 1 << 3,
 	SERVER_CONNECTING = 1 << 4,
 	PAIRING_MODE = 1 << 5,
+	UPDATING = 1 << 6,
 };
 
 const char* statusToString(Status status);

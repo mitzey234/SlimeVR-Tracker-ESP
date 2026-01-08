@@ -124,6 +124,20 @@ void LEDManager::update() {
 				length = PAIRING_MODE_INTERVAL;
 				break;
 		}
+	} else if (statusManager.hasStatus(Status::UPDATING)) {
+		count = UPDATING_COUNT;
+		switch (m_CurrentStage) {
+			case ON:
+			case OFF:
+				length = UPDATING_LENGTH;
+				break;
+			case GAP:
+				length = UPDATING_GAP;
+				break;
+			case INTERVAL:
+				length = UPDATING_INTERVAL;
+				break;
+		}
 	} else if (statusManager.hasStatus(Status::IMU_ERROR)) {
 		count = IMU_ERROR_COUNT;
 		switch (m_CurrentStage) {

@@ -56,6 +56,20 @@ struct ESPNowTrackerRateMessage {
 	uint32_t rateHz; // Requested polling rate in Hz
 } __attribute__((packed));
 
+struct ESPNowEnterOtaModeMessage {
+	ESPNow::ESPNowMessageTypes header = ESPNow::ESPNowMessageTypes::ENTER_OTA_MODE;
+	uint8_t securityBytes[8];
+    uint8_t ota_auth[16];
+    long ota_portNum;
+    uint8_t ota_ip[4];
+	char ssid[33];
+    char password[65];
+} __attribute__((packed));
+
+struct ESPNowEnterOtaAckMessage {
+    ESPNow::ESPNowMessageTypes header = ESPNow::ESPNowMessageTypes::ENTER_OTA_ACK;
+} __attribute__((packed));
+
 struct ESPNowMessageBase {
     ESPNow::ESPNowMessageTypes header;
 } __attribute__((packed));
@@ -71,5 +85,7 @@ union ESPNowMessage {
     ESPNowHeartbeatEchoMessage heartbeatEcho;
     ESPNowHeartbeatResponseMessage heartbeatResponse;
     ESPNowTrackerRateMessage trackerRate;
+    ESPNowEnterOtaModeMessage enterOtaMode;
+    ESPNowEnterOtaAckMessage enterOtaAck;
 };
 }  // namespace SlimeVR
