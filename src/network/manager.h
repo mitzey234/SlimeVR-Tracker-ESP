@@ -25,9 +25,13 @@
 
 #include "globals.h"
 #include "packets.h"
-#include "wifihandler.h"
-#include "espnowhandler.h"
+
 #include "wifiprovisioning.h"
+#if !USE_ESPNOW
+#include "wifihandler.h"
+#else
+#include "espnowhandler.h"
+#endif
 
 namespace SlimeVR::Network {
 

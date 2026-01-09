@@ -41,14 +41,14 @@ SlimeVR::LEDManager ledManager;
 SlimeVR::Status::StatusManager statusManager;
 SlimeVR::Configuration::Configuration configuration;
 SlimeVR::Network::Manager networkManager;
+SlimeVR::WifiProvisioning wifiProvisioning;
 #if USE_ESPNOW
 SlimeVR::Network::ConnectionESPNOW networkConnection;
 SlimeVR::ESPNow& espNow = SlimeVR::ESPNow::getInstance();
 #else
 SlimeVR::Network::Connection networkConnection;
-#endif
 SlimeVR::WiFiNetwork wifiNetwork;
-SlimeVR::WifiProvisioning wifiProvisioning;
+#endif
 
 #if DEBUG_MEASURE_SENSOR_TIME_TAKEN
 SlimeVR::Debugging::TimeTakenMeasurer sensorMeasurer{"Sensors"};

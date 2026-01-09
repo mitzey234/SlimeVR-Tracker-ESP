@@ -30,6 +30,7 @@
 #include "batterymonitor.h"
 #include "logging/Logger.h"
 #include "utils.h"
+#include <WiFi.h>
 
 #ifdef ESP32
 #include "nvs_flash.h"
@@ -97,6 +98,7 @@ decode_base64_length_null(const char* const b64char, unsigned int* b64ssidlength
 void cmdSet(CmdParser* parser) {
 	if (parser->getParamCount() != 1) {
 		if (parser->equalCmdParam(1, "WIFI")) {
+#if !USE_ESPNOW
 			if (parser->getParamCount() < 3) {
 				logger.error("CMD SET WIFI ERROR: Too few arguments");
 				logger.info("Syntax: SET WIFI \"<SSID>\" \"<PASSWORD>\"");
@@ -112,7 +114,11 @@ void cmdSet(CmdParser* parser) {
 				wifiNetwork.setWiFiCredentials(sc_ssid, sc_pw);
 				logger.info("CMD SET WIFI OK: New wifi credentials set, reconnecting");
 			}
+#else
+			logger.error("CMD SET WIFI ERROR: WiFi is not available in ESP-NOW mode");
+#endif
 		} else if (parser->equalCmdParam(1, "BWIFI")) {
+#if !USE_ESPNOW
 			if (parser->getParamCount() < 3) {
 				logger.error("CMD SET BWIFI ERROR: Too few arguments");
 				logger.info("Syntax: SET BWIFI <B64SSID> <B64PASSWORD>");
@@ -158,6 +164,9 @@ void cmdSet(CmdParser* parser) {
 				wifiNetwork.setWiFiCredentials(ssid, ppass);
 				logger.info("CMD SET BWIFI OK: New wifi credentials set, reconnecting");
 			}
+#else
+			logger.error("CMD SET BWIFI ERROR: WiFi is not available in ESP-NOW mode");
+#endif
 		} else {
 			logger.error("CMD SET ERROR: Unrecognized variable to set");
 		}
@@ -167,6 +176,7 @@ void cmdSet(CmdParser* parser) {
 }
 
 void printState() {
+#if !USE_ESPNOW
 	logger.info(
 		"SlimeVR Tracker, board: %d, hardware: %d, protocol: %d, firmware: %s, "
 		"address: %s, mac: %s, status: %d, wifi state: %d",
@@ -179,6 +189,18 @@ void printState() {
 		statusManager.getStatus(),
 		wifiNetwork.getWiFiState()
 	);
+#else
+	logger.info(
+		"SlimeVR Tracker, board: %d, hardware: %d, protocol: %d, firmware: %s, "
+		"mac: %s, status: %d",
+		BOARD,
+		HARDWARE_MCU,
+		PROTOCOL_VERSION,
+		FIRMWARE_VERSION,
+		WiFi.macAddress().c_str(),
+		statusManager.getStatus()
+	);
+#endif
 
 	logger.info("%s", FULL_VENDOR_STR);
 
@@ -298,6 +320,7 @@ void cmdGet(CmdParser* parser) {
 	}
 
 	if (parser->equalCmdParam(1, "TEST")) {
+#if !USE_ESPNOW
 		logger.info(
 			"[TEST] Board: %d, hardware: %d, protocol: %d, firmware: %s, address: %s, "
 			"mac: %s, status: %d, wifi state: %d",
@@ -310,6 +333,17 @@ void cmdGet(CmdParser* parser) {
 			statusManager.getStatus(),
 			wifiNetwork.getWiFiState()
 		);
+#else
+		logger.info(
+			"[TEST] Board: %d, hardware: %d, protocol: %d, firmware: %s, mac: %s, status: %d",
+			BOARD,
+			HARDWARE_MCU,
+			PROTOCOL_VERSION,
+			FIRMWARE_VERSION,
+			WiFi.macAddress().c_str(),
+			statusManager.getStatus()
+		);
+#endif
 		auto& sensor0 = sensorManager.getSensors()[0];
 		sensor0->motionLoop();
 		logger.info(
@@ -335,12 +369,14 @@ void cmdGet(CmdParser* parser) {
 	}
 
 	if (parser->equalCmdParam(1, "WIFISCAN")) {
+#if !USE_ESPNOW
 		logger.info("[WSCAN] Scanning for WiFi networks...");
 
 		// Scan would fail if connecting, stop connecting before scan
 		if (WiFi.status() != WL_CONNECTED) {
 			WiFi.disconnect();
 		}
+
 		if (wifiProvisioning.isProvisioning()) {
 			wifiProvisioning.stopProvisioning();
 		}
@@ -369,6 +405,9 @@ void cmdGet(CmdParser* parser) {
 		if (WiFi.status() != WL_CONNECTED) {
 			WiFi.begin();
 		}
+#else
+		logger.error("CMD GET WIFISCAN ERROR: WiFi is not available in ESP-NOW mode");
+#endif
 	}
 }
 

@@ -21,13 +21,7 @@
 	THE SOFTWARE.
 */
 #include "manager.h"
-
 #include "GlobalVars.h"
-#if ESP8266
-#include <espnow.h>
-#else
-#include <esp_now.h>
-#endif
 
 namespace SlimeVR::Network {
 
@@ -44,17 +38,13 @@ void Manager::update() {
 
 #if USE_ESPNOW
 	espNow.upkeep();
-#if !SENDTESTINGFRAMES
 	m_IsConnected = espNow.isConnected();
-#endif
 #else
 	wifiNetwork.upkeep();
 	m_IsConnected = wifiNetwork.isConnected();
 #endif
 
-	if (!m_IsConnected) {
-		return;
-	}
+	if (!m_IsConnected) return;
 
 	if (!wasConnected) {
 		// WiFi was reconnected, rediscover the server and reconnect

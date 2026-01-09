@@ -1,5 +1,7 @@
 #include "GlobalVars.h"
 #include "globals.h"
+#include <WiFi.h>
+
 #if !ESP8266
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
@@ -828,6 +830,12 @@ namespace SlimeVR {
 			}
 			case GatewayStatus::Connecting: {
 				// Try to handshake with gateway
+				static unsigned long connectStartTime = 0;
+				static bool connectTimerStarted = false;
+				if (!connectTimerStarted) {
+					connectStartTime = millis();
+					connectTimerStarted = true;
+				}
 				if (hasGatewayAddress) {
 					if (now - LastChannelSwitchTime >= 300) {
 						LastChannelSwitchTime = now;
@@ -840,20 +848,31 @@ namespace SlimeVR {
 					}
 					LastHandshakeRequestTime = now;
 					SendHandshakeRequest();
+					// Timeout: If connecting takes more than 60s, enter pairing mode
+					if ((now - connectStartTime) > 60000) {
+						Serial.println("[ESPNow] Connecting to gateway timed out, entering pairing mode");
+						connectTimerStarted = false;
+						Pairing();
+						break;
+					}
 				} else {
 					setState(GatewayStatus::SearchingForGateway);
+					connectTimerStarted = false;
 				}
 				break;
 			}
 			case GatewayStatus::Pairing: {
 				// Try to pair with gateway
+				unsigned long pairingTimeout = 60000;
+				// Reduce timeout to 10s if gateway/security stored in persistent memory
+				if (getGateway() != nullptr && getSecurityCode() != nullptr) pairingTimeout = 10000;
 				if (!hasGatewayAddress && (now - LastChannelSwitchTime) >= 400) {
 					LastChannelSwitchTime = now;
 					incrementChannel();
 					Serial.printf("[ESPNow] Scanning channel %d for gateway\n", getChannel());
 				}
 
-				if (now - PairingStartTime > 60000) {
+				if (now - PairingStartTime > pairingTimeout) {
 					Serial.println("[ESPNow] Pairing timed out, restarting search for gateway");
 					if (hasGatewayAddress) {
 						esp_now_del_peer(gatewayAddress);
@@ -899,20 +918,6 @@ namespace SlimeVR {
 						SendHeartbeat();
 					}
 				}
-
-#if SENDTESTINGFRAMES
-				// Send packet data at 100 packets per second (10ms interval)
-				if (now - LastPacketSendTime >= 1000/200) {
-					LastPacketSendTime = now;
-					ESPNowPacketMessage packet;
-					packet.len = 16;
-					memcpy(packet.data, "Hello World!1234", 16); //Example data
-
-					// Only send the actual used portion: header (1) + len (1) + actual data length
-					size_t actualSize = 2 + packet.len;
-					queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&packet), actualSize);
-				}
-#endif
 				break;
 			}
 			case GatewayStatus::Failed:

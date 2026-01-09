@@ -120,10 +120,6 @@
 #define USE_ESPNOW true
 #endif
 
-#ifndef SENDTESTINGFRAMES
-#define SENDTESTINGFRAMES false
-#endif
-
 #ifndef DONGLE_BASED_LIMITER
 #define DONGLE_BASED_LIMITER false
 #endif
