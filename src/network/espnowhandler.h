@@ -95,6 +95,8 @@ public:
 
 	unsigned long LastChannelSwitchTime = 0;
 
+	unsigned long LastTestDataSendTime = 0;
+
 	unsigned int channelIndex = 0;
 
 	// Heartbeat tracking
@@ -103,6 +105,8 @@ public:
 	bool WaitingForHeartbeatResponse = false;
 	uint8_t MissedHeartbeats = 0;
 	uint16_t HeartbeatSequenceNumber = 0;
+
+	uint16_t LastGatewayHeartbeatSequenceNumber = 0;
 
 	void SendHeartbeat();
 	void HandleHeartbeatResponse(uint8_t * mac, uint8_t *data, uint8_t len);

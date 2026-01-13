@@ -30,10 +30,12 @@
 #include "batterymonitor.h"
 #include "logging/Logger.h"
 #include "utils.h"
-#include <WiFi.h>
 
 #ifdef ESP32
 #include "nvs_flash.h"
+#include <WiFi.h>
+#else
+#include <ESP8266WiFi.h>
 #endif
 
 #ifdef EXT_SERIAL_COMMANDS

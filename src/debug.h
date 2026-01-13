@@ -120,6 +120,12 @@
 #define USE_ESPNOW true
 #endif
 
+#ifndef SEND_TEST_DATA
+#define SEND_TEST_DATA false
+#define TEST_DATA_RATE_HZ 100
+#endif
+
+
 #ifndef DONGLE_BASED_LIMITER
 #define DONGLE_BASED_LIMITER false
 #endif

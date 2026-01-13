@@ -31,6 +31,10 @@ void OTA::otaSetup(const char * const otaPassword) {
         enabled = false;
         return; // No password set up, disable OTA
     }
+	ArduinoOTA.setPort(8266);
+
+	ArduinoOTA.setHostname("SlimeVR-Tracker");
+
     ArduinoOTA.setPassword(otaPassword);
 
     ArduinoOTA.onStart([]() {

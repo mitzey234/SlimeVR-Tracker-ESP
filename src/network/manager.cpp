@@ -51,7 +51,9 @@ void Manager::update() {
 		networkConnection.reset();
 	}
 
+#if !SEND_TEST_DATA
 	networkConnection.update();
+#endif
 }
 
 }  // namespace SlimeVR::Network

@@ -1,10 +1,12 @@
 #include "GlobalVars.h"
 #include "globals.h"
-#include <WiFi.h>
 
 #if !ESP8266
+#include <WiFi.h>
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#else
+#include <ESP8266WiFi.h>
 #endif
 
 #include "network/espnowhandler.h"
@@ -31,7 +33,7 @@ namespace SlimeVR {
 
 		WiFi.mode(WIFI_STA);
 #if !ESP8266
-		esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11G);
+		esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11G);
 		//esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
 		auto result = WiFi.setChannel(1);
 		if (result != ESP_OK) {
@@ -40,10 +42,18 @@ namespace SlimeVR {
 		}
 
 		rate_config.phymode = WIFI_PHY_MODE_HT20;
-		rate_config.rate = WIFI_PHY_RATE_MCS7_SGI;
+		rate_config.rate = WIFI_PHY_RATE_MCS0_SGI;
 		rate_config.ersu = false;
+		rate_config.dcm = true;
 #else
-		WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+		WiFi.setPhyMode(WIFI_PHY_MODE_11N | WIFI_PHY_MODE_11G);
+		wifi_set_user_fixed_rate(FIXED_RATE_MASK_ALL, RATE_11N_MCS0);
+		wifi_set_user_limit_rate_mask(LIMIT_RATE_MASK_ALL);
+		auto d = wifi_set_user_rate_limit(RC_LIMIT_11N, WIFI_STA, RATE_11N_MCS2, RATE_11N_MCS0);
+		if (d != true) {
+			Serial.println("[ESPNow] Failed to set WiFi rate limit for init: " + String(d));
+			return;
+		}
 		//WiFi.setOutputPower(19.5);
 		auto result = wifi_set_channel(1);
 		if (result != true) {
@@ -345,8 +355,14 @@ namespace SlimeVR {
 
 		ESPNowHeartbeatResponseMessage heartbeatResponse;
 		auto& echoMessage = *reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
+		if (LastGatewayHeartbeatSequenceNumber == echoMessage.sequenceNumber) {
+			//Serial.printf("[ESPNow] Duplicate heartbeat echo received - Seq: %u, ignoring\n", echoMessage.sequenceNumber);
+			return;
+		}
+		LastGatewayHeartbeatSequenceNumber = echoMessage.sequenceNumber;
 		heartbeatResponse.sequenceNumber = echoMessage.sequenceNumber;
 		//Serial.printf("[ESPNow] Heartbeat echo received - Seq: %u, sending response\n", echoMessage.sequenceNumber);
+		queueMessage(mac, reinterpret_cast<uint8_t*>(&heartbeatResponse), sizeof(ESPNowHeartbeatResponseMessage));
 		queueMessage(mac, reinterpret_cast<uint8_t*>(&heartbeatResponse), sizeof(ESPNowHeartbeatResponseMessage));
 	}
 
@@ -436,10 +452,6 @@ namespace SlimeVR {
 			return;
 		}
 
-		//Send acknowledgment back to gateway
-		ESPNowEnterOtaAckMessage otaAck;
-		queueMessage(mac, reinterpret_cast<uint8_t*>(&otaAck), sizeof(ESPNowEnterOtaAckMessage), false, true);
-
 		mempcpy(ota_auth, message.ota_auth, 16);
 		ota_portNum = message.ota_portNum;
 		mempcpy(ota_ip, message.ota_ip, 4);
@@ -454,6 +466,8 @@ namespace SlimeVR {
 		lastSendTime = 0;
 
 		//Send Acknowledgment back to gateway
+		SendOTAAck();
+		lastSendTime = 0;
 		SendOTAAck();
 		lastSendTime = 0;
 		SendOTAAck();
@@ -895,11 +909,8 @@ namespace SlimeVR {
 				if (now - LastHeartbeatSendTime >= 1000) {
 					// Check if we're waiting for a response
 					if (WaitingForHeartbeatResponse) {
-						// Check if timeout exceeded (1000ms)
-						if (now - HeartbeatSentTimestamp >= 1000) {
 							MissedHeartbeats++;
 							//Serial.printf("[ESPNow] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
-
 							if (MissedHeartbeats >= 5) {
 								Serial.println("[ESPNow] Connection lost - 5 heartbeats missed");
 								channelIndex--;
@@ -907,9 +918,7 @@ namespace SlimeVR {
 								setState(GatewayStatus::Connecting);
 								break;
 							}
-
 							WaitingForHeartbeatResponse = false;
-						}
 					}
 
 					// Send heartbeat if not waiting for response
@@ -918,6 +927,16 @@ namespace SlimeVR {
 						SendHeartbeat();
 					}
 				}
+
+#if SEND_TEST_DATA
+				if (now - LastTestDataSendTime >= (1000 / TEST_DATA_RATE_HZ)) {
+					LastTestDataSendTime = now;
+					ESPNowPacketMessage testData;
+					testData.len = 16;
+					for (int i = 0; i < 16; ++i) testData.data[i] = i;
+					queueMessage(gatewayAddress, reinterpret_cast<uint8_t*>(&testData), 2 + testData.len);
+				}
+#endif
 				break;
 			}
 			case GatewayStatus::Failed:
@@ -936,6 +955,11 @@ namespace SlimeVR {
 				static bool connecting = false;
 				if (!connecting) {
 					WiFi.mode(WIFI_STA);
+#if ESP32
+					WiFi.setTxPower(WIFI_POWER_19_5dBm); // Set max power for better range
+#else
+					WiFi.setOutputPower(20.5); // Set max power for better range
+#endif
 					WiFi.begin(ssid, password);
 					Serial.printf("[ESPNow] Connecting to %s\n", ssid);
 					connecting = true;
@@ -944,7 +968,7 @@ namespace SlimeVR {
 
 				if (WiFi.status() == WL_CONNECTED) {
 					unsigned long elapsed = millis() - wifiConnectStart;
-					if (elapsed > 20000) {
+					if (elapsed > 60000) {
 						Serial.println("[ESPNow] timed out waiting for OTA update");
 						WiFi.disconnect(true);
 						setState(GatewayStatus::NotSetup);
@@ -953,11 +977,11 @@ namespace SlimeVR {
 						setUp();
 						wifiConnectStarted = false;
 					}
-					delay(250); // Placeholder for OTA logic
+					delay(150);
 					SendOTARequest();
 				} else {
 					unsigned long elapsed = millis() - wifiConnectStart;
-					if (elapsed > 20000) {
+					if (elapsed > 30000) {
 						Serial.println("[ESPNow] WiFi connection failed or timed out for OTA update");
 						WiFi.disconnect(true);
 						setState(GatewayStatus::NotSetup);
