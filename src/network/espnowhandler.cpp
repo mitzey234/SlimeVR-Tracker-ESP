@@ -27,13 +27,13 @@ namespace SlimeVR {
 	}
 
 	void ESPNow::setUp() {
-		Serial.println("[ESPNow] Setting up ESPNow");
+		Serial.println("[ESPNow] Setting up WiFi in ESPNow mode");
 
 		channelIndex = 0;
 
 		WiFi.mode(WIFI_STA);
 #if !ESP8266
-		esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11G);
+		esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11N);
 		//esp_wifi_set_max_tx_power(WIFI_POWER_2dBm);
 		auto result = WiFi.setChannel(1);
 		if (result != ESP_OK) {
@@ -41,15 +41,17 @@ namespace SlimeVR {
 			return;
 		}
 
+		Serial.println("[ESPNow] Setting fixed WiFi rate to MCS0_SGI");
+
 		rate_config.phymode = WIFI_PHY_MODE_HT20;
 		rate_config.rate = WIFI_PHY_RATE_MCS0_SGI;
 		rate_config.ersu = false;
 		rate_config.dcm = true;
 #else
-		WiFi.setPhyMode(WIFI_PHY_MODE_11N | WIFI_PHY_MODE_11G);
+		WiFi.setPhyMode(WIFI_PHY_MODE_11N);
 		wifi_set_user_fixed_rate(FIXED_RATE_MASK_ALL, RATE_11N_MCS0);
 		wifi_set_user_limit_rate_mask(LIMIT_RATE_MASK_ALL);
-		auto d = wifi_set_user_rate_limit(RC_LIMIT_11N, WIFI_STA, RATE_11N_MCS2, RATE_11N_MCS0);
+		auto d = wifi_set_user_rate_limit(RC_LIMIT_11N, WIFI_STA, RATE_11N_MCS0, RATE_11N_MCS0);
 		if (d != true) {
 			Serial.println("[ESPNow] Failed to set WiFi rate limit for init: " + String(d));
 			return;
@@ -61,6 +63,8 @@ namespace SlimeVR {
 			return;
 		}
 #endif
+
+		Serial.println("[ESPNow] Initializing ESPNow");
 
 		auto startState = esp_now_init();
 #if ESP8266
@@ -834,6 +838,8 @@ namespace SlimeVR {
 
 	void ESPNow::upkeep () {
 		processSendQueue();
+		static unsigned long connectStartTime = 0;
+		static bool connectTimerStarted = false;
 
 		auto now = millis();
 		switch (state) {
@@ -844,8 +850,6 @@ namespace SlimeVR {
 			}
 			case GatewayStatus::Connecting: {
 				// Try to handshake with gateway
-				static unsigned long connectStartTime = 0;
-				static bool connectTimerStarted = false;
 				if (!connectTimerStarted) {
 					connectStartTime = millis();
 					connectTimerStarted = true;
@@ -878,6 +882,7 @@ namespace SlimeVR {
 			case GatewayStatus::Pairing: {
 				// Try to pair with gateway
 				unsigned long pairingTimeout = 60000;
+				if (connectTimerStarted) connectTimerStarted = false;
 				// Reduce timeout to 10s if gateway/security stored in persistent memory
 				if (getGateway() != nullptr && getSecurityCode() != nullptr) pairingTimeout = 10000;
 				if (!hasGatewayAddress && (now - LastChannelSwitchTime) >= 400) {
@@ -906,11 +911,12 @@ namespace SlimeVR {
 			case GatewayStatus::Connected: {
 				// Maintain connection with heartbeat
 				// Only run heartbeat logic once per second
+				if (connectTimerStarted) connectTimerStarted = false;
 				if (now - LastHeartbeatSendTime >= 1000) {
 					// Check if we're waiting for a response
 					if (WaitingForHeartbeatResponse) {
 							MissedHeartbeats++;
-							//Serial.printf("[ESPNow] Heartbeat timeout - Missed: %d/3\n", MissedHeartbeats);
+							//Serial.printf("[ESPNow] Heartbeat timeout - Missed: %d/5\n", MissedHeartbeats);
 							if (MissedHeartbeats >= 5) {
 								Serial.println("[ESPNow] Connection lost - 5 heartbeats missed");
 								channelIndex--;

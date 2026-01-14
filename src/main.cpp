@@ -67,6 +67,10 @@ void setup() {
 	Serial.begin(serialBaudRate);
 	globalTimer = timer_create_default();
 
+#if ESP32C3
+	setCpuFrequencyMhz(80);
+#endif
+
 	Serial.println();
 	Serial.println();
 	Serial.println();
