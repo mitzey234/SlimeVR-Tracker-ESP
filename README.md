@@ -5,9 +5,9 @@ This firmware should be paired with a ESP32-S3 controller running [this firmware
 
 This firmware doesn't support a pairing button so in order to enter pairing mode a command has been added into the serial console. Connect the ESP32-S3 to your computer, open a serial terminal (e.g. PuTTY) at 115200 baud rate and type `pair` followed by Enter. The receiver will then enter pairing mode for 60 seconds, during which you will need to have the other controller with the reciever firmware powered on and in pairing mode.
 
-By default the firmware will boot in pairing mode if no paired receiver is configured (factory reset).
+By default the firmware will boot in pairing mode if no paired receiver is configured (factory reset). The tracker firmware will also enter pairing mode automatically if it is unable to connect to its paired receiver for more than 60 seconds.
 
-Current recommendations are to only pair 5-6 trackers to a single receiver to avoid a poor experience, but this may vary depending on your environment and other factors.
+Current recommendations are to only pair 10 trackers to a single receiver to avoid a poor experience, but this may vary depending on your environment and other factors.
 
 # SlimeVR Tracker firmware for ESP
 
