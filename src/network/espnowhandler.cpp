@@ -277,7 +277,7 @@ namespace SlimeVR {
 		memcpy(handshakeRequest.securityBytes, securityCode, 8);
 		//Serial.println("[ESPNow] Sending handshake request");
 		uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-		queueMessage(broadcastAddress, reinterpret_cast<uint8_t*>(&handshakeRequest), sizeof(ESPNowConnectionMessage), false, true);
+		queueMessage(broadcastAddress, reinterpret_cast<uint8_t*>(&handshakeRequest), sizeof(ESPNowConnectionMessage), false, false);
 	}
 
 	void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
