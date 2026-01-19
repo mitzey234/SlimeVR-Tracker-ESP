@@ -355,8 +355,6 @@ namespace SlimeVR {
 			return;
 		}
 
-		MissedHeartbeats = 0;
-
 		ESPNowHeartbeatResponseMessage heartbeatResponse;
 		auto& echoMessage = *reinterpret_cast<ESPNowHeartbeatEchoMessage*>(data);
 		if (LastGatewayHeartbeatSequenceNumber == echoMessage.sequenceNumber) {
