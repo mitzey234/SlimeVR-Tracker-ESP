@@ -357,7 +357,7 @@
 				"SENSORS": [
 					{
 						"protocol": "I2C",
-						"imu": "IMU_ICM45686",
+						"imu": "IMU_LSM6DSV",
 						"int": "6",
 						"rotation": "DEG_270",
 						"scl": "9",
@@ -365,7 +365,7 @@
 					},
 					{
 						"protocol": "I2C",
-						"imu": "IMU_ICM45686",
+						"imu": "IMU_LSM6DSV",
 						"int": "7",
 						"rotation": "DEG_270",
 						"scl": "9",
