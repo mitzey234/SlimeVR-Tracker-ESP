@@ -11,10 +11,10 @@
 #define MAC2ARGS(mac) mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
 
 #if ALLOW_14_WIFI_CHANNELS
-#define MAX_WIFI_CHANNEL_ARRAY 4
+#define MAX_WIFI_CHANNEL_ARRAY 6
 #define MAX_WIFI_CHANNEL 14
 #else
-#define MAX_WIFI_CHANNEL_ARRAY 3
+#define MAX_WIFI_CHANNEL_ARRAY 4
 #define MAX_WIFI_CHANNEL 11
 #endif
 
@@ -46,7 +46,7 @@ public:
         ENTER_OTA_ACK = 11 // Acknowledgment from tracker to gateway to enter OTA update mode
 	};
 
-	unsigned int channels[5] = {2, 5, 8, 11, 14}; //Channels to scan for gateway
+	unsigned int channels[7] = {2, 4, 6, 8, 10, 12, 14}; //Channels to scan for gateway
 
 	static unsigned int getChannel();
 
@@ -182,5 +182,7 @@ public:
 
 	char ssid[33];
     char password[65];
+
+	uint8_t expectedToken[8];
 };
 }  // namespace SlimeVR

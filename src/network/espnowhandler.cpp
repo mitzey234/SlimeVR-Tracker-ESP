@@ -249,6 +249,10 @@ namespace SlimeVR {
 
 	void ESPNow::HandlePairingResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 		if (state != GatewayStatus::Pairing || !hasGatewayAddress) return;
+
+		// //Make sure the mac address matches the gateway we sent the pairing request to
+		if (memcmp(mac, gatewayAddress, 6) != 0) return;
+
 		// Handle pairing response logic here
 		Serial.println("[ESPNow] Successfully paired with gateway, establishing connection...");
 
@@ -275,6 +279,9 @@ namespace SlimeVR {
 		}
 		ESPNowConnectionMessage handshakeRequest;
 		memcpy(handshakeRequest.securityBytes, securityCode, 8);
+
+		memcpy(handshakeRequest.token, expectedToken, 8);
+
 		//Serial.println("[ESPNow] Sending handshake request");
 		uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 		queueMessage(broadcastAddress, reinterpret_cast<uint8_t*>(&handshakeRequest), sizeof(ESPNowConnectionMessage), false, false);
@@ -282,10 +289,34 @@ namespace SlimeVR {
 
 	void ESPNow::HandleHandshakeResponse(uint8_t * mac, uint8_t *data, uint8_t len) {
 		if (state != GatewayStatus::Connecting || !hasGatewayAddress) return;
+
+		// Make sure the mac address matches the gateway we sent the handshake request to
+		if (memcmp(mac, gatewayAddress, 6) != 0) return;
+
+		if (len != sizeof(ESPNowConnectionAckMessage)) {
+			Serial.printf("[ESPNow] Invalid handshake response message length: expected %d, got %d\n", sizeof(ESPNowConnectionAckMessage), len);
+			return;
+		}
+
 		// Handle handshake response logic here
 		//Serial.println("[ESPNow] Handshake response received, connection established");
 
 		auto& ackMessage = *reinterpret_cast<ESPNowConnectionAckMessage*>(data);
+
+		//Check token
+		if (memcmp(ackMessage.token, expectedToken, 8) != 0) {
+			Serial.println("[ESPNow] Handshake response with invalid token, ignoring");
+			return;
+		}
+
+		//Check targerAddr matches our MAC address
+		uint8_t macaddr[6];
+		WiFi.macAddress(macaddr);
+		if (memcmp(ackMessage.targetAddr, macaddr, 6) != 0) {
+			Serial.println("[ESPNow] Handshake response with invalid target address, ignoring");
+			return;
+		}
+
 		Serial.printf("[ESPNow] Assigned channel: %d and tracker ID: %d\n", ackMessage.channel, ackMessage.trackerId);
 
 		// Store the assigned tracker ID
@@ -331,6 +362,12 @@ namespace SlimeVR {
 
 		if (len != sizeof(ESPNowHeartbeatResponseMessage)) {
 			//Serial.printf("[ESPNow] Invalid heartbeat response length: expected %d, got %d\n", sizeof(ESPNowHeartbeatResponseMessage), len);
+			return;
+		}
+
+		//Check mac address matches gateway
+		if (memcmp(mac, gatewayAddress, 6) != 0) {
+			//Serial.println("[ESPNow] Received heartbeat response from unknown address, ignoring");
 			return;
 		}
 
@@ -726,6 +763,8 @@ namespace SlimeVR {
 				Serial.println("[ESPNow] Connecting to gateway");
 				statusManager.setStatus(SlimeVR::Status::WIFI_CONNECTING, true);
 				statusManager.setStatus(SlimeVR::Status::PAIRING_MODE, false);
+
+				for (int i = 0; i < 8; i++) expectedToken[i] = random(0, 256);
 				break;
 			case GatewayStatus::Pairing:
 				if (!hasGatewayAddress) {
@@ -853,12 +892,16 @@ namespace SlimeVR {
 					connectTimerStarted = true;
 				}
 				if (hasGatewayAddress) {
-					if (now - LastChannelSwitchTime >= 300) {
+					if (now - LastChannelSwitchTime >= 200) {
 						LastChannelSwitchTime = now;
-						singleIncrementChannel();
+						incrementChannel();
+
+						// // Generate random 8-byte token
+						for (int i = 0; i < 8; i++) expectedToken[i] = random(0, 256);
+
 						Serial.printf("[ESPNow] Connect gateway via channel %d\n", getChannel());
 					}
-					if (now - LastHandshakeRequestTime < 150) {
+					if (now - LastHandshakeRequestTime < 100) {
 						//Don't spam requests
 						break;
 					}

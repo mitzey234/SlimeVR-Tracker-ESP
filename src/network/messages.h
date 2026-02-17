@@ -22,12 +22,15 @@ struct ESPNowPairingAckMessage {
 struct ESPNowConnectionMessage {
     ESPNow::ESPNowMessageTypes header = ESPNow::ESPNowMessageTypes::HANDSHAKE_REQUEST;
     uint8_t securityBytes[8];
+	uint8_t token[8];
 } __attribute__((packed));
 
 struct ESPNowConnectionAckMessage {
     ESPNow::ESPNowMessageTypes header = ESPNow::ESPNowMessageTypes::HANDSHAKE_RESPONSE;
 	uint8_t channel;
     uint8_t trackerId;
+	uint8_t token[8];
+	uint8_t targetAddr[6];
 } __attribute__((packed));
 
 struct ESPNowPacketMessage {
