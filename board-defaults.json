@@ -123,19 +123,19 @@
 				"SENSORS": [
 					{
 						"protocol": "I2C",
-						"imu": "IMU_AUTO",
-						"int": "D5",
+						"imu": "IMU_LSM6DSV",
+						"int": "16",
 						"rotation": "DEG_270",
-						"scl": "D1",
-						"sda": "D2"
+						"scl": "5",
+						"sda": "4"
 					},
 					{
 						"protocol": "I2C",
-						"imu": "IMU_AUTO",
-						"int": "D6",
+						"imu": "IMU_LSM6DSV",
+						"int": "16",
 						"rotation": "DEG_270",
-						"scl": "D1",
-						"sda": "D2"
+						"scl": "5",
+						"sda": "4"
 					}
 				],
 				"BATTERY": {
@@ -381,7 +381,7 @@
 				},
 				"LED": {
 					"LED_PIN": "10",
-					"LED_INVERTED": false
+					"LED_INVERTED": true
 				}
 			},
 			"flashingRules": {

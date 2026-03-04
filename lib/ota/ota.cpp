@@ -23,6 +23,12 @@
 
 #include "ota.h"
 
+#if ESP8266
+#include <ESP8266WiFi.h>
+#else
+#include <WiFi.h>
+#endif
+
 const unsigned long bootTime = millis();
 bool enabled = true;
 
@@ -76,6 +82,11 @@ void OTA::otaUpdate() {
             return;
         }
         #endif
+
+        if (WiFi.status() != WL_CONNECTED) {
+            return;
+        }
+
         ArduinoOTA.handle();
     }
 }
