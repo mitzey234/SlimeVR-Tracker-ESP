@@ -377,11 +377,11 @@
 					"r1": 100,
 					"r2": 220,
 					"shieldR": 180,
-					"pin": "3"
+					"pin": "4"
 				},
 				"LED": {
 					"LED_PIN": "10",
-					"LED_INVERTED": false
+					"LED_INVERTED": true
 				}
 			},
 			"flashingRules": {
