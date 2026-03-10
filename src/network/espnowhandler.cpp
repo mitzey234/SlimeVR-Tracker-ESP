@@ -894,7 +894,12 @@ namespace SlimeVR {
 				if (hasGatewayAddress) {
 					if (now - LastChannelSwitchTime >= 200) {
 						LastChannelSwitchTime = now;
+#if !ESP8266
 						incrementChannel();
+#else
+						singleIncrementChannel();
+#endif
+
 
 						// // Generate random 8-byte token
 						for (int i = 0; i < 8; i++) expectedToken[i] = random(0, 256);
